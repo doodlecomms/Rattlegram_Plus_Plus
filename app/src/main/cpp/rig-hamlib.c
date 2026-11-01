@@ -254,6 +254,15 @@ Java_com_bi3bju_rattlegram_1plus_HamlibRig_nativeOpen(JNIEnv *env, jclass cls, j
 		step = "ptt_type";
 		rc = setConf(rig, step, "RIG");
 	}
+	/* Never drive the control lines: on a Digirig, RTS keys the transmitter (the USB side also holds them low) */
+	if (rc == RIG_OK) {
+		step = "rts_state";
+		rc = setConf(rig, step, "OFF");
+	}
+	if (rc == RIG_OK) {
+		step = "dtr_state";
+		rc = setConf(rig, step, "OFF");
+	}
 	if (rc == RIG_OK) {
 		/* No background polling: the app only talks to the radio when the user or a transmission needs it */
 		step = "poll_interval";

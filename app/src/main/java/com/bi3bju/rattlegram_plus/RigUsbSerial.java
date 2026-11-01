@@ -27,14 +27,6 @@ final class RigUsbSerial {
     private static volatile boolean gone;
     private static final Object lock = new Object();
 
-    // usb-serial-for-android can drop bytes when asked for less than a USB packet, so read whole packets
-    // here and hand them to Hamlib in the sizes it asks for. Only Hamlib's one receive thread reads, so this
-    // needs no lock; a flush just asks that thread to drop what it holds (a lock here would make the flush
-    // wait behind the receive thread's blocking USB reads, seconds at a time).
-    private static final byte[] packet = new byte[1024];
-    private static int packetPos, packetLen;
-    private static volatile boolean discardPacket;
-
     private RigUsbSerial() {}
 
     static void setUsbManager(UsbManager manager) {
@@ -87,7 +79,6 @@ final class RigUsbSerial {
                 }
                 return EFAIL;
             }
-            discardPacket = true;
             gone = false;
             port = p;
             return 0;
@@ -98,30 +89,15 @@ final class RigUsbSerial {
         UsbSerialPort p = port;
         if (p == null || gone)
             return EGONE;
-        // A flush drops only what was already waiting here
-        if (discardPacket) {
-            discardPacket = false;
-            packetPos = packetLen = 0;
+        // Straight into Hamlib's buffer: its bridge reads 512 bytes at a time, more than a USB packet, so no
+        // bytes are lost and nothing needs buffering (or locking) here
+        try {
+            // A timeout of 0 means "wait forever" to the USB library; never block Hamlib like that
+            int n = p.read(buffer, Math.max(timeoutMs, 20));
+            return Math.max(n, 0);
+        } catch (IOException e) {
+            return gone || !p.isOpen() ? EGONE : EFAIL;
         }
-        if (packetLen == 0) {
-            int n;
-            try {
-                // A timeout of 0 means "wait forever" to the USB library; never block Hamlib like that
-                n = p.read(packet, Math.max(timeoutMs, 20));
-            } catch (IOException e) {
-                return gone || !p.isOpen() ? EGONE : EFAIL;
-            }
-            // Bytes that arrive after a flush are the answer to the next command: keep them
-            if (n <= 0)
-                return 0;
-            packetPos = 0;
-            packetLen = n;
-        }
-        int count = Math.min(length, packetLen);
-        System.arraycopy(packet, packetPos, buffer, 0, count);
-        packetPos += count;
-        packetLen -= count;
-        return count;
     }
 
     static int write(byte[] buffer, int length, int timeoutMs) {
@@ -168,7 +144,6 @@ final class RigUsbSerial {
         UsbSerialPort p = port;
         if (p == null)
             return EGONE;
-        discardPacket = true;
         try {
             p.purgeHwBuffers(true, true);
             return 0;
