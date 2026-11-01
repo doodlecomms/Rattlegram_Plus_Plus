@@ -10,6 +10,11 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // usb-serial-for-android (optional Hamlib rig control) is published on JitPack only
+        maven {
+            url 'https://jitpack.io'
+            content { includeGroup 'com.github.mik3y' }
+        }
     }
 }
 rootProject.name = "Rattlegram plus"

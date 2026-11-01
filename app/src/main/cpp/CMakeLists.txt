@@ -54,3 +54,15 @@ target_link_libraries( # Specifies the target library.
         # Links the target library to the log library
         # included in the NDK.
         ${log-lib})
+
+# Optional Hamlib rig control (CAT frequency and PTT): its own library, loaded only when the user turns
+# Hamlib on. libhamlib.so (LGPL-2.1-or-later) is built by hamlib/build-hamlib-android.sh into jniLibs; ABIs
+# without it (32-bit x86) simply have no rig control.
+set(HAMLIB_SO ${CMAKE_CURRENT_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}/libhamlib.so)
+if (EXISTS ${HAMLIB_SO})
+    add_library(hamlib SHARED IMPORTED)
+    set_target_properties(hamlib PROPERTIES IMPORTED_LOCATION ${HAMLIB_SO})
+    add_library(rattlegram-rig SHARED rig-hamlib.c)
+    target_include_directories(rattlegram-rig PRIVATE hamlib/include)
+    target_link_libraries(rattlegram-rig hamlib ${log-lib})
+endif ()

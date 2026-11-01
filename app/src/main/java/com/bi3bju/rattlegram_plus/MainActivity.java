@@ -64,6 +64,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
+import android.widget.AutoCompleteTextView;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.view.WindowManager;
@@ -132,6 +133,18 @@ public class MainActivity extends AppCompatActivity {
     private final int bluetoothPermissionID = 200;
     // Bluetooth radio (BTech UV-Pro / Vero VR-N76) audio link
     private RadioLink radioLink;
+    // Optional Hamlib rig control (CAT frequency and PTT). Off by default: nothing Hamlib is loaded or opened
+    // until the user turns it on under Rig Control (Hamlib)
+    private RigSettings rigSettings = new RigSettings();
+    private RigController rig;
+    private List<HamlibRig.Model> rigModels;
+    private Runnable rigDialogRefresh;
+    /** The transmission playing now was keyed through Hamlib and must be unkeyed when it ends. */
+    private boolean catPttTransmission;
+    /** Audio frames written to the AudioTrack for the transmission playing now. */
+    private long framesWritten;
+    /** How long the radio stays keyed after the last audio has played. */
+    private static final long RIG_PTT_TAIL_MS = 100;
     private boolean activityResumed;
     // Encoder output at the radio's 32 kHz: symbol 5120 + guard 640 samples
     private static final int RADIO_EXTENDED_LENGTH = (1280 * RadioLink.SAMPLE_RATE / 8000) * 9 / 8;
@@ -298,9 +311,15 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onPeriodicNotification(AudioTrack audioTrack) {
             if (produceEncoder(outputBuffer, outputChannel)) {
-                audioTrack.write(outputBuffer, 0, outputBuffer.length);
+                writeOutput();
             } else {
+                // Audio still in the output buffer, which stop() lets play out
+                long remaining = framesWritten - (audioTrack.getPlaybackHeadPosition() & 0xffffffffL);
                 audioTrack.stop();
+                if (catPttTransmission) {
+                    catPttTransmission = false;
+                    rig.ptt().release(Math.max(0, remaining) * 1000 / audioTrack.getSampleRate() + RIG_PTT_TAIL_MS);
+                }
                 handler.postDelayed(() -> startListening(), 1000);
             }
         }
@@ -1037,6 +1056,8 @@ public class MainActivity extends AppCompatActivity {
             password = rememberedPassword;
         setContentView(binding.getRoot());
         setTitle(R.string.app_title);
+        // Only the saved configuration: a radio is never connected (or keyed) without the user asking
+        rigSettings = RigSettings.from(getPreferences(Context.MODE_PRIVATE).getAll());
         // Optional app lock: only asks when the app is opened fresh, not after a rotation
         if (isAppLockEnabled()) {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
@@ -1733,6 +1754,10 @@ public class MainActivity extends AppCompatActivity {
             showRadioDialog();
             return true;
         }
+        if (id == R.id.action_rig_control) {
+            showRigDialog();
+            return true;
+        }
         if (id == R.id.action_radio_mute_speaker) {
             toggleRadioMute(item);
             return true;
@@ -2069,6 +2094,8 @@ public class MainActivity extends AppCompatActivity {
         // Disconnecting gives the radio its speaker volume back
         if (radioLink != null)
             radioLink.disconnect();
+        if (rig != null)
+            rig.shutdownAndWait(1000);
         password = null;
         callSign = "";
         draftText = "";
@@ -2188,6 +2215,8 @@ public class MainActivity extends AppCompatActivity {
                     storeSettings();
                     if (deleteMessagesOnClose)
                         clearStoredMessages();
+                    if (rig != null)
+                        rig.shutdownAndWait(1000);
                     System.exit(0);
                 })
                 .setNegativeButton(R.string.cancel, null)
@@ -2569,6 +2598,349 @@ public class MainActivity extends AppCompatActivity {
         radioLink.setSpeakerMuted(mute);
     }
 
+    // ---------------- Optional Hamlib rig control (CAT frequency and PTT) ----------------
+
+    private void writeOutput() {
+        audioTrack.write(outputBuffer, 0, outputBuffer.length);
+        framesWritten += outputBuffer.length / audioTrack.getChannelCount();
+    }
+
+    /** Whether this transmission must be keyed through Hamlib. A connected Bluetooth radio keys itself. */
+    private boolean useCatPtt() {
+        return rigSettings.requiresCatPtt() && !isRadioConnected();
+    }
+
+    /** Refuses to transmit, and says why, when Hamlib should key the radio but it is not connected. */
+    private boolean rigBlocksTransmit() {
+        if (!useCatPtt() || rig != null && rig.isConnected())
+            return false;
+        Toast.makeText(this, R.string.rig_needs_connection, Toast.LENGTH_LONG).show();
+        return true;
+    }
+
+    /** Starts the audio already written to the output; with Hamlib CAT PTT only once the radio is keyed. */
+    private void startPlayback() {
+        if (!useCatPtt()) {
+            audioTrack.play();
+            setStatus(getString(R.string.transmitting));
+            return;
+        }
+        if (rig == null || !rig.isConnected()) {
+            abortTransmission(getString(R.string.rig_needs_connection));
+            return;
+        }
+        catPttTransmission = true;
+        setStatus(getString(R.string.rig_keying));
+        rig.ptt().key(rigSettings.keyUpDelayMs, () -> {
+            try {
+                audioTrack.play();
+                setStatus(getString(R.string.transmitting));
+            } catch (IllegalStateException e) {
+                abortTransmission(e.getMessage());
+            }
+        }, error -> abortTransmission(getString(R.string.rig_ptt_failed, error)));
+    }
+
+    /** Drops the audio waiting to be sent, unkeys the CAT radio and goes back to listening. */
+    private void abortTransmission(String message) {
+        catPttTransmission = false;
+        if (rig != null)
+            rig.ptt().releaseNow();
+        try {
+            audioTrack.pause();
+            audioTrack.flush();
+            audioTrack.stop();
+        } catch (IllegalStateException ignored) {
+        }
+        pictureQueue = null;
+        if (message != null)
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+        startListening();
+    }
+
+    private final RigController.Listener rigListener = new RigController.Listener() {
+        @Override
+        public void onRigState(RigController.State state, String message) {
+            if (state == RigController.State.DISCONNECTED) {
+                if (catPttTransmission)
+                    abortTransmission(null);
+                if (message != null)
+                    Toast.makeText(MainActivity.this, message, Toast.LENGTH_LONG).show();
+            }
+            if (rigDialogRefresh != null)
+                rigDialogRefresh.run();
+        }
+
+        @Override
+        public void onPttProblem(String message) {
+            if (catPttTransmission)
+                abortTransmission(null);
+            new AlertDialog.Builder(MainActivity.this, R.style.Theme_AlertDialog)
+                    .setTitle(R.string.rig_control)
+                    .setMessage(message == null ? getString(R.string.rig_watchdog) : getString(R.string.rig_unkey_failed, message))
+                    .setPositiveButton(R.string.okay, null)
+                    .show();
+        }
+    };
+
+    /** Loads Hamlib and creates the controller the first time rig control is used. */
+    private boolean ensureRig() {
+        if (rig != null)
+            return true;
+        if (!HamlibRig.load()) {
+            Toast.makeText(this, getString(R.string.rig_unavailable, HamlibRig.loadError()), Toast.LENGTH_LONG).show();
+            return false;
+        }
+        rig = new RigController(this, handler, rigListener);
+        return true;
+    }
+
+    private void saveRigSettings() {
+        getPreferences(Context.MODE_PRIVATE).edit()
+                .putBoolean(RigSettings.KEY_ENABLED, rigSettings.enabled)
+                .putInt(RigSettings.KEY_MODEL, rigSettings.model)
+                .putString(RigSettings.KEY_DEVICE, rigSettings.device)
+                .putInt(RigSettings.KEY_BAUD, rigSettings.baudRate)
+                .putBoolean(RigSettings.KEY_CAT_PTT, rigSettings.catPtt)
+                .putInt(RigSettings.KEY_KEY_UP_DELAY, rigSettings.keyUpDelayMs)
+                .apply();
+    }
+
+    private static String formatFrequency(double hz) {
+        return String.format(Locale.US, "%.5f MHz", hz / 1e6);
+    }
+
+    private void showRigDialog() {
+        View view = getLayoutInflater().inflate(R.layout.rig_control, null);
+        CheckBox enabledCheck = view.findViewById(R.id.rig_enabled);
+        View options = view.findViewById(R.id.rig_options);
+        AutoCompleteTextView modelEdit = view.findViewById(R.id.rig_model);
+        Spinner deviceSpinner = view.findViewById(R.id.rig_device);
+        Spinner baudSpinner = view.findViewById(R.id.rig_baud);
+        CheckBox pttCheck = view.findViewById(R.id.rig_cat_ptt);
+        EditText delayEdit = view.findViewById(R.id.rig_delay);
+        TextView statusText = view.findViewById(R.id.rig_status);
+        Button connectButton = view.findViewById(R.id.rig_connect);
+        View tools = view.findViewById(R.id.rig_connected_tools);
+        TextView frequencyText = view.findViewById(R.id.rig_frequency);
+        EditText frequencyEdit = view.findViewById(R.id.rig_set_frequency);
+        final RigSettings s = rigSettings;
+        final int[] chosenModel = {s.model};
+
+        String[] baudLabels = new String[RigSettings.BAUD_RATES.length];
+        for (int i = 0; i < baudLabels.length; ++i)
+            baudLabels[i] = String.valueOf(RigSettings.BAUD_RATES[i]);
+        baudSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, baudLabels));
+        Runnable selectBaud = () -> {
+            for (int i = 0; i < RigSettings.BAUD_RATES.length; ++i)
+                if (RigSettings.BAUD_RATES[i] == s.baudRate)
+                    baudSpinner.setSelection(i);
+        };
+        selectBaud.run();
+        pttCheck.setChecked(s.catPtt);
+        delayEdit.setText(String.valueOf(s.keyUpDelayMs));
+
+        // USB serial adapters plugged in now; listing them needs no permission
+        List<String> deviceKeys = new ArrayList<>();
+        Runnable listDevices = () -> {
+            deviceKeys.clear();
+            List<String> labels = new ArrayList<>();
+            for (com.hoho.android.usbserial.driver.UsbSerialDriver driver :
+                    com.hoho.android.usbserial.driver.UsbSerialProber.getDefaultProber().findAllDrivers(
+                            (android.hardware.usb.UsbManager) getSystemService(Context.USB_SERVICE))) {
+                android.hardware.usb.UsbDevice d = driver.getDevice();
+                String key = RigController.deviceKey(d);
+                String name = Build.VERSION.SDK_INT >= 21 && d.getProductName() != null ? d.getProductName()
+                        : driver.getClass().getSimpleName().replace("SerialDriver", "");
+                deviceKeys.add(key);
+                labels.add(name + " (" + key + ")");
+            }
+            if (labels.isEmpty())
+                labels.add(getString(R.string.rig_no_devices));
+            deviceSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, labels));
+            int saved = deviceKeys.indexOf(s.device);
+            if (saved >= 0)
+                deviceSpinner.setSelection(saved);
+        };
+        listDevices.run();
+
+        // Pull what is on screen into the settings and save them (never while connected)
+        Runnable readFields = () -> {
+            s.model = chosenModel[0];
+            int d = deviceSpinner.getSelectedItemPosition();
+            if (d >= 0 && d < deviceKeys.size())
+                s.device = deviceKeys.get(d);
+            s.baudRate = RigSettings.BAUD_RATES[Math.max(0, baudSpinner.getSelectedItemPosition())];
+            s.catPtt = pttCheck.isChecked();
+            try {
+                s.keyUpDelayMs = RigSettings.clampDelay(Integer.parseInt(delayEdit.getText().toString().trim()));
+            } catch (NumberFormatException e) {
+                s.keyUpDelayMs = RigSettings.DEFAULT_KEY_UP_DELAY_MS;
+            }
+            saveRigSettings();
+        };
+
+        Runnable refresh = () -> {
+            options.setVisibility(s.enabled ? View.VISIBLE : View.GONE);
+            RigController.State state = rig == null ? RigController.State.DISCONNECTED : rig.state();
+            boolean editable = state == RigController.State.DISCONNECTED;
+            modelEdit.setEnabled(editable);
+            deviceSpinner.setEnabled(editable);
+            baudSpinner.setEnabled(editable);
+            pttCheck.setEnabled(editable);
+            delayEdit.setEnabled(editable);
+            connectButton.setText(editable ? R.string.rig_connect : R.string.rig_disconnect);
+            tools.setVisibility(state == RigController.State.CONNECTED ? View.VISIBLE : View.GONE);
+            String text = state == RigController.State.CONNECTED
+                    ? getString(R.string.rig_state_connected, modelEdit.getText())
+                    : getString(state == RigController.State.CONNECTING ? R.string.rig_state_connecting : R.string.rig_state_disconnected);
+            if (state == RigController.State.CONNECTED && isRadioConnected())
+                text += "\n" + getString(R.string.rig_bt_radio_note);
+            statusText.setText(text);
+            double hz = rig == null ? -1 : rig.lastFrequency();
+            frequencyText.setText(hz > 0 ? getString(R.string.rig_frequency, formatFrequency(hz)) : getString(R.string.rig_frequency_unknown));
+        };
+
+        Runnable loadModels = () -> {
+            if (rigModels != null) {
+                showModels(modelEdit, chosenModel, s, selectBaud);
+                return;
+            }
+            new Thread(() -> {
+                List<HamlibRig.Model> models = HamlibRig.models();
+                handler.post(() -> {
+                    rigModels = models;
+                    showModels(modelEdit, chosenModel, s, selectBaud);
+                    refresh.run();
+                });
+            }, "rig-models").start();
+        };
+
+        if (s.enabled) {
+            if (ensureRig())
+                loadModels.run();
+            else
+                s.enabled = false;
+        }
+        enabledCheck.setChecked(s.enabled);
+        enabledCheck.setOnCheckedChangeListener((b, on) -> {
+            if (on && !ensureRig()) {
+                b.setChecked(false);
+                return;
+            }
+            if (!on && rig != null && rig.state() != RigController.State.DISCONNECTED)
+                rig.disconnect();
+            s.enabled = on;
+            saveRigSettings();
+            if (on)
+                loadModels.run();
+            refresh.run();
+        });
+
+        connectButton.setOnClickListener(v -> {
+            if (rig == null)
+                return;
+            if (rig.state() != RigController.State.DISCONNECTED) {
+                rig.disconnect();
+                return;
+            }
+            listDevices.run();
+            readFields.run();
+            if (s.model == RigSettings.NO_MODEL) {
+                Toast.makeText(this, R.string.rig_choose_model, Toast.LENGTH_SHORT).show();
+                return;
+            }
+            HamlibRig.ModelInfo info = HamlibRig.modelInfo(s.model);
+            if (s.catPtt && info != null && !info.canSetPtt) {
+                Toast.makeText(this, R.string.rig_ptt_unsupported, Toast.LENGTH_LONG).show();
+                return;
+            }
+            rig.connect(s);
+        });
+
+        view.findViewById(R.id.rig_read).setOnClickListener(v -> rig.readFrequency((hz, error) -> {
+            if (error != null)
+                frequencyText.setText(getString(R.string.rig_frequency_failed, error));
+            else
+                refresh.run();
+        }));
+
+        view.findViewById(R.id.rig_set).setOnClickListener(v -> {
+            HamlibRig.ModelInfo info = HamlibRig.modelInfo(s.model);
+            if (info != null && !info.canSetFrequency) {
+                Toast.makeText(this, R.string.rig_set_frequency_unsupported, Toast.LENGTH_LONG).show();
+                return;
+            }
+            double mhz;
+            try {
+                mhz = Double.parseDouble(frequencyEdit.getText().toString().trim());
+            } catch (NumberFormatException e) {
+                mhz = 0;
+            }
+            if (!(mhz > 0.01 && mhz < 100000)) {
+                Toast.makeText(this, R.string.rig_bad_frequency, Toast.LENGTH_SHORT).show();
+                return;
+            }
+            rig.setFrequency(Math.round(mhz * 1e6), (hz, error) -> {
+                if (error != null)
+                    frequencyText.setText(getString(R.string.rig_frequency_failed, error));
+                else
+                    refresh.run();
+            });
+        });
+
+        view.findViewById(R.id.rig_test_ptt).setOnClickListener(v -> {
+            if (!s.catPtt) {
+                Toast.makeText(this, R.string.rig_ptt_unsupported, Toast.LENGTH_SHORT).show();
+                return;
+            }
+            new AlertDialog.Builder(this, R.style.Theme_AlertDialog)
+                    .setTitle(R.string.rig_test_ptt)
+                    .setMessage(R.string.rig_test_ptt_prompt)
+                    .setPositiveButton(R.string.rig_test_ptt, (d, w) -> {
+                        if (rig == null || !rig.isConnected() || isTransmitBusy())
+                            return;
+                        rig.ptt().key(0, () -> rig.ptt().release(2000),
+                                error -> Toast.makeText(this, getString(R.string.rig_ptt_failed, error), Toast.LENGTH_LONG).show());
+                    })
+                    .setNegativeButton(R.string.cancel, null)
+                    .show();
+        });
+
+        rigDialogRefresh = refresh;
+        refresh.run();
+        AlertDialog dialog = new AlertDialog.Builder(this, R.style.Theme_AlertDialog)
+                .setTitle(R.string.rig_control)
+                .setView(view)
+                .setPositiveButton(R.string.okay, null)
+                .create();
+        dialog.setOnDismissListener(d -> {
+            rigDialogRefresh = null;
+            if (rig == null || rig.state() == RigController.State.DISCONNECTED)
+                readFields.run();
+        });
+        dialog.show();
+    }
+
+    /** Fills the model picker (search by any part of the name) and shows the chosen model. */
+    private void showModels(AutoCompleteTextView modelEdit, int[] chosenModel, RigSettings s, Runnable selectBaud) {
+        RigModelAdapter adapter = new RigModelAdapter(this, rigModels);
+        modelEdit.setAdapter(adapter);
+        for (HamlibRig.Model m : rigModels)
+            if (m.id == chosenModel[0])
+                modelEdit.setText(m.toString(), false);
+        modelEdit.setOnItemClickListener((parent, v, position, id) -> {
+            HamlibRig.Model m = (HamlibRig.Model) parent.getItemAtPosition(position);
+            chosenModel[0] = m.id;
+            // A newly chosen model starts at a baud rate it supports
+            HamlibRig.ModelInfo info = HamlibRig.modelInfo(m.id);
+            if (info != null) {
+                s.baudRate = RigSettings.defaultBaud(info.rateMin, info.rateMax);
+                selectBaud.run();
+            }
+        });
+    }
+
     /** Renders the configured transmission at 32 kHz and hands it to the radio after delayMs. */
     private void transmitViaRadio(long delayMs) {
         short[] symbol = new short[RADIO_EXTENDED_LENGTH];
@@ -2784,6 +3156,8 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, R.string.picture_busy, Toast.LENGTH_SHORT).show();
             return;
         }
+        if (rigBlocksTransmit())
+            return;
         List<String> packets;
         try {
             int id = new java.security.SecureRandom().nextInt(0x10000);
@@ -2842,6 +3216,11 @@ public class MainActivity extends AppCompatActivity {
                 PictureCodec.Packet first = PictureCodec.parse(queue.get(0));
                 if (first != null)
                     sentMessagesById.put(acknowledgmentId(pictureAckSource(first.id)), entry);
+                pictureQueue = null;
+                startListening();
+                return;
+            }
+            if (rigBlocksTransmit()) {
                 pictureQueue = null;
                 startListening();
                 return;
@@ -3325,6 +3704,8 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, R.string.radio_busy, Toast.LENGTH_SHORT).show();
             return;
         }
+        if (rigBlocksTransmit())
+            return;
         if (encrypt && (password == null || password.isEmpty())) {
             Toast.makeText(this, R.string.encryption_disabled_no_password, Toast.LENGTH_LONG).show();
             return;
@@ -3388,18 +3769,19 @@ public class MainActivity extends AppCompatActivity {
         if (isRadioConnected()) {
             transmitViaRadio(0);
         } else {
+            framesWritten = 0;
             for (int i = 0; i < 5; ++i) {
                 produceEncoder(outputBuffer, outputChannel);
-                audioTrack.write(outputBuffer, 0, outputBuffer.length);
+                writeOutput();
             }
-            audioTrack.play();
-            setStatus(getString(R.string.transmitting));
+            startPlayback();
         }
     }
 
     private boolean isTransmitBusy() {
         return isRadioConnected() ? radioLink.isTransmitting()
-                : audioTrack != null && audioTrack.getPlayState() == AudioTrack.PLAYSTATE_PLAYING;
+                : audioTrack != null && audioTrack.getPlayState() == AudioTrack.PLAYSTATE_PLAYING
+                || rig != null && rig.ptt().isKeying();
     }
 
     private void repeatMessage() {
@@ -3418,6 +3800,8 @@ public class MainActivity extends AppCompatActivity {
         }
         if (repeaterDebounce > 0)
             repeatedMessages.add(message);
+        if (rigBlocksTransmit())
+            return;
         stopListening();
         String sender = parseCallSign(stagedCall);
         autoSaveContact(sender);
@@ -3427,14 +3811,12 @@ public class MainActivity extends AppCompatActivity {
             transmitViaRadio(1000L * repeaterDelay);
             return;
         }
+        framesWritten = 0;
         for (int i = 0; i < 5; ++i) {
             produceEncoder(outputBuffer, outputChannel);
-            audioTrack.write(outputBuffer, 0, outputBuffer.length);
+            writeOutput();
         }
-        handler.postDelayed(() -> {
-            audioTrack.play();
-            setStatus(getString(R.string.transmitting));
-        }, 1000L * repeaterDelay);
+        handler.postDelayed(this::startPlayback, 1000L * repeaterDelay);
     }
 
     private void setInputType(ViewGroup np, int it) {
@@ -3814,6 +4196,9 @@ public class MainActivity extends AppCompatActivity {
             clearStoredMessages();
         if (radioLink != null)
             radioLink.disconnect();
+        // Unkey and close the CAT radio before anything else goes away
+        if (rig != null)
+            rig.shutdownAndWait(1000);
         stopBeacon();
         if (audioTrack != null) audioTrack.stop();
         destroyEncoder();
