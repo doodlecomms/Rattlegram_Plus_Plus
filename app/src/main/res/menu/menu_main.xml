@@ -132,6 +132,9 @@
         </menu>
     </item>
 
+    <!-- Optional Hamlib rig control (CAT frequency and PTT); off by default -->
+    <item android:id="@+id/action_rig_control" android:title="@string/rig_control" />
+
     <item android:title="@string/repeater_mode">
         <menu>
             <group android:checkableBehavior="single">

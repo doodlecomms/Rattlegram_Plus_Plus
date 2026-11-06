@@ -63,6 +63,27 @@ Requires Android 7.0 or newer.
 
 Tested with a UV-Pro (firmware 0.9.3) and Samsung Galaxy A15 phones. The Vero VR-N76 uses the same protocol but has not been tested yet — reports welcome.
 
+## Rig control with Hamlib (optional)
+
+Off by default; a fresh install works exactly as before. **Menu → Rig Control (Hamlib) → Enable Hamlib rig control** adds CAT control of a radio on a **USB serial (CAT) cable**:
+
+- **Tune the radio:** while it is connected the main screen's status line shows its frequency (*Listening · 146.550 MHz*); tap it (or Rig Control → Tune…) for step up/down (5 kHz to 1 MHz), typing a frequency, and your own saved frequencies (tap to tune, long-press to delete). Turning the radio's dial shows up within about 2 seconds: while connected and on screen the app reads the frequency every 2 s (never while transmitting, never in the background). The radio is never retuned on its own, and tuning is refused while transmitting.
+- **Key the radio by CAT (PTT) for every transmission**: the app keys the radio, waits until the radio confirms it is transmitting plus the key-up delay, then plays the audio, and unkeys right after the last audio has played. If the radio cannot be keyed, nothing is sent. With CAT PTT on and the radio not connected, transmissions are refused instead of going out by VOX.
+- A connected Bluetooth radio keys itself; Hamlib then does not key the CAT radio.
+- **Optional: put the radio in data mode while connected** (off by default). On Connect the app switches the radio to the data mode matching its current mode — FM to packet FM (the FT-857D's **PKT**), USB to packet USB (its **DIG**), LSB to packet LSB — and back to the mode it found when you disconnect or close the app. A radio already in a data mode is left alone. What PKT or DIG means still depends on the radio's own menus (on the FT-857D, PKT is FM-based when PKT RATE is 1200).
+
+**Connecting:** choose the radio model (type part of its name), the USB adapter and the baud rate, then **Connect**. Android asks once for access to the USB adapter. Connecting reads the frequency to check the radio answers. The connection is never restored automatically after the app restarts — connect again when you need it.
+
+**Yaesu FT-857D** (Hamlib model *Yaesu FT-857*, 1022) — the first radio this was built for, tested on 2 m with a Digirig Mobile at 38400 baud (connect, frequency read/set, CAT PTT, and Rattlegram messages sent and decoded over the air):
+- CAT goes through the rear **CAT/LINEAR** 8-pin mini-DIN jack, which uses **TTL-level** serial (not RS-232). You need a USB CAT cable made for the FT-817/857/897 (FTDI, CP210x, CH34x or PL2303 chip), or Yaesu's CT-62 plus a USB-to-RS-232 adapter, and a USB-C OTG adapter for the phone. An ordinary audio cable does not carry CAT.
+- Serial settings: **8 data bits, no parity, 2 stop bits**; set the app's baud rate to the radio's **CAT RATE** setting, **menu 19** (4800, 9600 or 38400; 4800 is the factory default).
+- The audio still goes through whatever audio interface you use today (for example to the rear DATA jack); rig control does not change the audio path. **The radio must be in PKT mode** to send Rattlegram's audio through the DATA jack (in FM it transmits from the microphone, so CAT keys the radio but no tones go out). Use the MODE button, or tick *Put the radio in data mode while connected*. On 2 m, PKT is FM-based when the PKT RATE menu is 1200; the PKT MIC menu sets the level. The phone has one USB-C port, so a USB CAT cable plus a USB audio interface needs a powered USB hub, or one interface that provides both.
+- Set the radio's time-out timer (TOT) as a last line of defence; see *Limitations*.
+
+**Test PTT (2 s)** in the dialog keys the radio without audio (it transmits a carrier): use it with a dummy load or antenna, on a frequency where you may transmit, at low power.
+
+**Limitations:** software cannot guarantee the radio is unkeyed if the phone loses power, Android kills the app, or the USB cable is pulled while transmitting — the "PTT off" command then never reaches the radio. The app unkeys on every error, when cancelled and when closed, re-reads the radio's transmit state where the radio can report it, and unkeys after 30 s at the latest, but the radio's own time-out timer is the real safety net. Only CAT PTT is supported (not RTS/DTR PTT), one radio at a time, on the adapter's first port. Hamlib is not available on 32-bit x86 devices.
+
 ## Sending pictures
 
 Compose → **Picture**, then take a photo or choose one. The preview shows the size, the number of parts (plus spare parts) and about how long it will take. Tips:
@@ -96,6 +117,8 @@ keyPassword=...
 
 Without that file, `./gradlew assembleRelease` falls back to the debug key.
 
+**Hamlib** is not rebuilt by Gradle: the prebuilt `app/src/main/jniLibs/<abi>/libhamlib.so` is used. To rebuild it from source see [hamlib/README.md](hamlib/README.md). Unit tests: `./gradlew testDebugUnitTest`.
+
 ## Permissions
 
 | Permission | Why |
@@ -105,6 +128,7 @@ Without that file, `./gradlew assembleRelease` falls back to the debug key.
 | Bluetooth (nearby devices) | Connect to a BTech UV-Pro / Vero VR-N76 |
 | Camera | Scan a password QR code (asked only when you tap Scan QR) |
 | Internet | Map display for received locations |
+| USB device access | Only with optional Hamlib rig control: Android asks for access to the USB CAT adapter when you tap Connect (no app permission is added) |
 
 ## Credits and license
 
