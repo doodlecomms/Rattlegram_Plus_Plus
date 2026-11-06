@@ -73,10 +73,10 @@ Off by default; a fresh install works exactly as before. **Menu → Rig Control 
 
 **Connecting:** choose the radio model (type part of its name), the USB adapter and the baud rate, then **Connect**. Android asks once for access to the USB adapter. Connecting reads the frequency to check the radio answers. The connection is never restored automatically after the app restarts — connect again when you need it.
 
-**Yaesu FT-857D** (Hamlib model *Yaesu FT-857*, 1022) — the first radio this was built for:
+**Yaesu FT-857D** (Hamlib model *Yaesu FT-857*, 1022) — the first radio this was built for, tested on 2 m with a Digirig Mobile at 38400 baud (connect, frequency read/set, CAT PTT, and Rattlegram messages sent and decoded over the air):
 - CAT goes through the rear **CAT/LINEAR** 8-pin mini-DIN jack, which uses **TTL-level** serial (not RS-232). You need a USB CAT cable made for the FT-817/857/897 (FTDI, CP210x, CH34x or PL2303 chip), or Yaesu's CT-62 plus a USB-to-RS-232 adapter, and a USB-C OTG adapter for the phone. An ordinary audio cable does not carry CAT.
 - Serial settings: **8 data bits, no parity, 2 stop bits**; set the app's baud rate to the radio's **CAT RATE** menu setting (4800, 9600 or 38400; 4800 is the factory default).
-- The audio still goes through whatever audio interface you use today (for example to the rear DATA jack); rig control does not change the audio path. The phone has one USB-C port, so a USB CAT cable plus a USB audio interface needs a powered USB hub, or one interface that provides both.
+- The audio still goes through whatever audio interface you use today (for example to the rear DATA jack); rig control does not change the audio path. **Put the radio in PKT (or DIG) mode** when the audio comes in through the DATA jack: in FM the FT-857D transmits from the microphone, so CAT keys the radio but no Rattlegram tones go out. On 2 m, PKT is FM-based when the PKT RATE menu is 1200; the PKT MIC menu sets the level. The phone has one USB-C port, so a USB CAT cable plus a USB audio interface needs a powered USB hub, or one interface that provides both.
 - Set the radio's time-out timer (TOT) as a last line of defence; see *Limitations*.
 
 **Test PTT (2 s)** in the dialog keys the radio without audio (it transmits a carrier): use it with a dummy load or antenna, on a frequency where you may transmit, at low power.
