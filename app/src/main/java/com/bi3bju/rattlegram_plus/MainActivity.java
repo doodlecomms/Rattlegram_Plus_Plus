@@ -567,12 +567,14 @@ public class MainActivity extends AppCompatActivity {
         addString(getString(R.string.title_line, currentTime(), appendContactNote(call), info));
     }
 
-    // Decrypt when receiving a message
+    // Decrypt when receiving a message. Only a message that passed decryption (so came from a station
+    // with the password) is marked with the lock; plain "Received" means it was sent in the clear.
     private String addMessage(String call, String info, String mesg) {
         if (info.equals(getString(R.string.received))) {
             String decrypted = CryptoUtils.decrypt(mesg, password);
             if (decrypted != null) {
                 mesg = decrypted;
+                info = getString(R.string.received_decrypted);
             }
         }
         String entry = getString(R.string.title_message, currentTime(), appendContactNote(call), info, mesg);
@@ -3459,6 +3461,9 @@ public class MainActivity extends AppCompatActivity {
             image = HiddenCall.strip(image, hiddenCall);
             autoSaveContact(hiddenCall);
             in.entry = replaceTitle(in.entry, hiddenCall, getString(R.string.received_hidden));
+        } else if (image != null && in.assembly.encrypted) {
+            String first = in.entry.substring(0, Math.max(0, in.entry.indexOf('\n')));
+            in.entry = replaceTitle(in.entry, parseCallAndNote(first)[0], getString(R.string.received_decrypted));
         }
         if (image == null || PictureUtil.decode(image) == null) {
             if (in.assembly.encrypted) {
@@ -3568,7 +3573,8 @@ public class MainActivity extends AppCompatActivity {
                 autoSaveContact(hidden[0]);
                 replaceBody(replaceTitle(entry, hidden[0], getString(R.string.received_hidden)), hidden[1]);
             } else {
-                replaceBody(entry, plain);
+                String call = parseCallAndNote(entry.substring(0, nl))[0];
+                replaceBody(replaceTitle(entry, call, getString(R.string.received_decrypted)), plain);
             }
             ++unlocked;
         }
@@ -3930,7 +3936,7 @@ public class MainActivity extends AppCompatActivity {
             addLine(callSign.trim(), getString(R.string.sent_ping));
         } else {
             String displayMessage = encrypt ? message : finalMessage;
-            String entry = addMessage(callSign.trim(), getString(R.string.transmitted), displayMessage);
+            String entry = addMessage(callSign.trim(), getString(encrypt ? R.string.transmitted_encrypted : R.string.transmitted), displayMessage);
             // The receiver computes the same ID from what it receives (the ciphertext when encrypted)
             sentMessagesById.put(acknowledgmentId(finalMessage.trim()), entry);
         }
