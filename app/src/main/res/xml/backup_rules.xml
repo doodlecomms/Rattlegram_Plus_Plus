@@ -8,6 +8,11 @@
 <full-backup-content>
 	<!-- The remembered password is encrypted with a key that never leaves this phone; never back it up -->
 	<exclude domain="sharedpref" path="password_store.xml"/>
+	<!-- Message history (stored after decryption), contacts and call sign, and received pictures stay on this phone -->
+	<!-- getPreferences() file: the full class name, since the app ID differs from the Java package -->
+	<exclude domain="sharedpref" path="com.bi3bju.rattlegram_plus.MainActivity.xml"/>
+	<exclude domain="sharedpref" path="MainActivity.xml"/>
+	<exclude domain="file" path="pictures"/>
 	<!--
    <include domain="sharedpref" path="."/>
    <exclude domain="sharedpref" path="device.xml"/>
