@@ -164,6 +164,8 @@ final class RigController {
                 }
                 if (s.dataMode)
                     note = enterDataMode();
+                else if (info != null && info.canGetMode)
+                    note = voiceModeNote();
             } catch (RigBackend.RigException e) {
                 backend.close();
                 error = e.getMessage();
@@ -204,6 +206,21 @@ final class RigController {
         } catch (RigBackend.RigException e) {
             return context.getString(R.string.rig_data_mode_failed, e.getMessage());
         }
+    }
+
+    /**
+     * On the rig thread, with the data-mode option off: a one-time reminder if the radio is in a voice mode
+     * (FM, USB, LSB), since audio through a data jack usually needs the data mode. Changes nothing on the radio.
+     */
+    private String voiceModeNote() {
+        try {
+            long mode = backend.getMode()[0];
+            if (RigModes.dataModeFor(mode) != 0)
+                return context.getString(R.string.rig_voice_mode_note, RigModes.name(mode));
+        } catch (RigBackend.RigException ignored) {
+            // not worth failing the connection over a reminder
+        }
+        return null;
     }
 
     /** On the rig thread: puts back the mode found on connect, then closes the radio and the adapter. */
