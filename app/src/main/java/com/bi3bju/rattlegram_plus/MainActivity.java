@@ -2750,6 +2750,7 @@ public class MainActivity extends AppCompatActivity {
         CheckBox enabledCheck = view.findViewById(R.id.rig_enabled);
         View options = view.findViewById(R.id.rig_options);
         AutoCompleteTextView modelEdit = view.findViewById(R.id.rig_model);
+        TextView modelLabel = view.findViewById(R.id.rig_model_label);
         Spinner deviceSpinner = view.findViewById(R.id.rig_device);
         Spinner baudSpinner = view.findViewById(R.id.rig_baud);
         TextView baudHint = view.findViewById(R.id.rig_baud_hint);
@@ -2850,7 +2851,7 @@ public class MainActivity extends AppCompatActivity {
 
         Runnable loadModels = () -> {
             if (rigModels != null) {
-                showModels(modelEdit, chosenModel, s, () -> {
+                showModels(modelEdit, modelLabel, chosenModel, s, () -> {
                     selectBaud.run();
                     showBaudHint.run();
                 });
@@ -2860,7 +2861,7 @@ public class MainActivity extends AppCompatActivity {
                 List<HamlibRig.Model> models = HamlibRig.models();
                 handler.post(() -> {
                     rigModels = models;
-                    showModels(modelEdit, chosenModel, s, () -> {
+                    showModels(modelEdit, modelLabel, chosenModel, s, () -> {
                         selectBaud.run();
                         showBaudHint.run();
                     });
@@ -3101,12 +3102,24 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /** Fills the model picker (search by any part of the name) and shows the chosen model. */
-    private void showModels(AutoCompleteTextView modelEdit, int[] chosenModel, RigSettings s, Runnable selectBaud) {
+    private void showModels(AutoCompleteTextView modelEdit, TextView modelLabel, int[] chosenModel, RigSettings s, Runnable selectBaud) {
         RigModelAdapter adapter = new RigModelAdapter(this, rigModels);
         modelEdit.setAdapter(adapter);
         for (HamlibRig.Model m : rigModels)
             if (m.id == chosenModel[0])
                 modelEdit.setText(m.toString(), false);
+        // Tapping shows every model, not just the ones matching what is already in the box; typing still searches
+        View.OnClickListener showAll = v -> {
+            if (modelEdit.isEnabled())
+                adapter.getFilter().filter(null, count -> modelEdit.showDropDown());
+        };
+        modelEdit.setOnClickListener(showAll);
+        modelEdit.setOnFocusChangeListener((v, focused) -> {
+            if (focused)
+                showAll.onClick(v);
+        });
+        if (modelLabel != null)
+            modelLabel.setText(getString(R.string.rig_model_count, rigModels.size()));
         modelEdit.setOnItemClickListener((parent, v, position, id) -> {
             HamlibRig.Model m = (HamlibRig.Model) parent.getItemAtPosition(position);
             chosenModel[0] = m.id;

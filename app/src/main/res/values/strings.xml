@@ -308,7 +308,8 @@ The resulting text message from the COFDMTV decoder is the only data that gets s
 	<string name="rig_enable">Enable Hamlib rig control</string>
 	<string name="rig_intro">Optional. Controls a radio through a USB serial (CAT) cable: reads and sets its frequency, and keys it (PTT) for each transmission. Leave this off to use the app as before.</string>
 	<string name="rig_model">Radio model</string>
-	<string name="rig_model_hint">Type to search, e.g. FT-857</string>
+	<string name="rig_model_hint">Tap to choose, or type to search (e.g. FT-857)</string>
+	<string name="rig_model_count">Radio model (%1$d supported by Hamlib; tap to see all, or type to search)</string>
 	<string name="rig_device">USB serial (CAT) adapter</string>
 	<string name="rig_no_devices">No USB serial adapter plugged in</string>
 	<string name="rig_baud">Baud rate (must match the radio\'s CAT rate setting)</string>
