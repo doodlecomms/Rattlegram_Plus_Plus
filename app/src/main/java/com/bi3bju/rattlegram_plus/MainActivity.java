@@ -462,12 +462,25 @@ public class MainActivity extends AppCompatActivity {
         if (statusTimer != null)
             handler.removeCallbacks(statusTimer);
         if (tmp) {
-            statusTimer = () -> status.setText(prevStatus);
+            statusTimer = () -> status.setText(withRigFrequency(prevStatus));
             handler.postDelayed(statusTimer, 10000);
         } else {
             prevStatus = str;
         }
-        status.setText(str);
+        status.setText(withRigFrequency(str));
+    }
+
+    /** "Listening · 146.550 MHz" while a Hamlib radio is connected; the status unchanged otherwise. */
+    private String withRigFrequency(String text) {
+        if (rig == null || !rig.isConnected() || rig.lastFrequency() <= 0 || text == null)
+            return text;
+        return text + " · " + RigFrequencies.format(rig.lastFrequency());
+    }
+
+    /** Shows a new frequency on the status line, keeping whatever it says. */
+    private void refreshStatusFrequency() {
+        if (prevStatus != null && statusTimer == null)
+            status.setText(withRigFrequency(prevStatus));
     }
 
     private void setStatus(String str) {
@@ -1050,6 +1063,11 @@ public class MainActivity extends AppCompatActivity {
         EdgeToEdge.enable(this);
         ActivityMainBinding binding = ActivityMainBinding.inflate(getLayoutInflater());
         status = binding.status;
+        // Only does anything while a Hamlib radio is connected: tap the frequency to tune
+        status.setOnClickListener(v -> {
+            if (rig != null && rig.isConnected())
+                showTuneDialog(null);
+        });
         handler = new Handler(getMainLooper());
         radioLink = new RadioLink(radioListener);
         // Optional remembered password (encrypted with an Android Keystore key)
@@ -2670,6 +2688,7 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(MainActivity.this, message, Toast.LENGTH_LONG).show();
             if (rigDialogRefresh != null)
                 rigDialogRefresh.run();
+            refreshStatusFrequency();
         }
 
         @Override
@@ -2708,9 +2727,6 @@ public class MainActivity extends AppCompatActivity {
                 .apply();
     }
 
-    private static String formatFrequency(double hz) {
-        return String.format(Locale.US, "%.5f MHz", hz / 1e6);
-    }
 
     private void showRigDialog() {
         View view = getLayoutInflater().inflate(R.layout.rig_control, null);
@@ -2727,7 +2743,6 @@ public class MainActivity extends AppCompatActivity {
         Button connectButton = view.findViewById(R.id.rig_connect);
         View tools = view.findViewById(R.id.rig_connected_tools);
         TextView frequencyText = view.findViewById(R.id.rig_frequency);
-        EditText frequencyEdit = view.findViewById(R.id.rig_set_frequency);
         final RigSettings s = rigSettings;
         final int[] chosenModel = {s.model};
         // Radio-specific reminders, shown only for that model
@@ -2813,7 +2828,7 @@ public class MainActivity extends AppCompatActivity {
                 text += "\n" + getString(R.string.rig_bt_radio_note);
             statusText.setText(text);
             double hz = rig == null ? -1 : rig.lastFrequency();
-            frequencyText.setText(hz > 0 ? getString(R.string.rig_frequency, formatFrequency(hz)) : getString(R.string.rig_frequency_unknown));
+            frequencyText.setText(hz > 0 ? getString(R.string.rig_frequency, RigFrequencies.format(hz)) : getString(R.string.rig_frequency_unknown));
         };
 
         Runnable loadModels = () -> {
@@ -2879,36 +2894,7 @@ public class MainActivity extends AppCompatActivity {
             rig.connect(s);
         });
 
-        view.findViewById(R.id.rig_read).setOnClickListener(v -> rig.readFrequency((hz, error) -> {
-            if (error != null)
-                frequencyText.setText(getString(R.string.rig_frequency_failed, error));
-            else
-                refresh.run();
-        }));
-
-        view.findViewById(R.id.rig_set).setOnClickListener(v -> {
-            HamlibRig.ModelInfo info = HamlibRig.modelInfo(s.model);
-            if (info != null && !info.canSetFrequency) {
-                Toast.makeText(this, R.string.rig_set_frequency_unsupported, Toast.LENGTH_LONG).show();
-                return;
-            }
-            double mhz;
-            try {
-                mhz = Double.parseDouble(frequencyEdit.getText().toString().trim());
-            } catch (NumberFormatException e) {
-                mhz = 0;
-            }
-            if (!(mhz > 0.01 && mhz < 100000)) {
-                Toast.makeText(this, R.string.rig_bad_frequency, Toast.LENGTH_SHORT).show();
-                return;
-            }
-            rig.setFrequency(Math.round(mhz * 1e6), (hz, error) -> {
-                if (error != null)
-                    frequencyText.setText(getString(R.string.rig_frequency_failed, error));
-                else
-                    refresh.run();
-            });
-        });
+        view.findViewById(R.id.rig_tune).setOnClickListener(v -> showTuneDialog(refresh));
 
         view.findViewById(R.id.rig_test_ptt).setOnClickListener(v -> {
             if (!s.catPtt) {
@@ -2941,6 +2927,157 @@ public class MainActivity extends AppCompatActivity {
                 readFields.run();
         });
         dialog.show();
+    }
+
+    /**
+     * The Tune window: the radio's frequency, step up/down, a typed frequency and the saved frequencies. Only
+     * opened while a radio is connected; tunes only when the user taps, and never while transmitting.
+     */
+    private void showTuneDialog(Runnable onChange) {
+        if (rig == null || !rig.isConnected())
+            return;
+        View view = getLayoutInflater().inflate(R.layout.rig_tune, null);
+        TextView frequencyText = view.findViewById(R.id.tune_frequency);
+        TextView messageText = view.findViewById(R.id.tune_message);
+        Spinner stepSpinner = view.findViewById(R.id.tune_step);
+        EditText entry = view.findViewById(R.id.tune_entry);
+        LinearLayout savedList = view.findViewById(R.id.tune_saved_list);
+        SharedPreferences prefs = getPreferences(Context.MODE_PRIVATE);
+        HamlibRig.ModelInfo info = HamlibRig.modelInfo(rigSettings.model);
+        boolean canTune = info == null || info.canSetFrequency;
+
+        String[] stepLabels = new String[RigFrequencies.STEPS_HZ.length];
+        for (int i = 0; i < stepLabels.length; ++i) {
+            int st = RigFrequencies.STEPS_HZ[i];
+            stepLabels[i] = getString(R.string.tune_step, st >= 1_000_000 ? st / 1_000_000 + " MHz"
+                    : (st % 1000 == 0 ? String.valueOf(st / 1000) : String.valueOf(st / 1000.0)) + " kHz");
+        }
+        stepSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, stepLabels));
+        int savedStep = prefs.getInt(RigSettings.KEY_STEP, RigFrequencies.DEFAULT_STEP_HZ);
+        for (int i = 0; i < RigFrequencies.STEPS_HZ.length; ++i)
+            if (RigFrequencies.STEPS_HZ[i] == savedStep)
+                stepSpinner.setSelection(i);
+
+        Runnable show = () -> {
+            double hz = rig.lastFrequency();
+            frequencyText.setText(hz > 0 ? RigFrequencies.format(hz) : "—");
+        };
+        RigController.Result<Double> done = (hz, error) -> {
+            messageText.setText(error == null ? "" : getString(R.string.rig_frequency_failed, error));
+            show.run();
+            refreshStatusFrequency();
+            if (onChange != null)
+                onChange.run();
+        };
+        // Tunes only when allowed: not while keyed or transmitting, and only on radios Hamlib can tune
+        java.util.function.LongConsumer tuneTo = hz -> {
+            if (!rig.isConnected())
+                return;
+            if (!canTune) {
+                messageText.setText(R.string.rig_set_frequency_unsupported);
+                return;
+            }
+            if (isTransmitBusy() || rig.ptt().isKeyed()) {
+                messageText.setText(R.string.tune_busy);
+                return;
+            }
+            messageText.setText(R.string.tune_tuning);
+            rig.setFrequency(hz, done);
+        };
+
+        List<RigFrequencies.Saved>[] saved = new List[]{
+                RigFrequencies.parseSaved(prefs.getString(RigSettings.KEY_SAVED_FREQUENCIES, ""))};
+        Runnable[] listSaved = new Runnable[1];
+        listSaved[0] = () -> {
+            savedList.removeAllViews();
+            if (saved[0].isEmpty()) {
+                TextView none = new TextView(this);
+                none.setText(R.string.tune_saved_none);
+                savedList.addView(none);
+            }
+            for (RigFrequencies.Saved f : saved[0]) {
+                Button b = new Button(this, null, android.R.attr.borderlessButtonStyle);
+                b.setAllCaps(false);
+                b.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+                b.setText(f.name.isEmpty() ? RigFrequencies.format(f.hz) : RigFrequencies.format(f.hz) + "  " + f.name);
+                b.setOnClickListener(v -> tuneTo.accept(f.hz));
+                b.setOnLongClickListener(v -> {
+                    new AlertDialog.Builder(this, R.style.Theme_AlertDialog)
+                            .setMessage(getString(R.string.tune_delete_prompt, RigFrequencies.format(f.hz)))
+                            .setPositiveButton(R.string.delete, (d, w) -> {
+                                saved[0] = RigFrequencies.without(saved[0], f.hz);
+                                prefs.edit().putString(RigSettings.KEY_SAVED_FREQUENCIES, RigFrequencies.serializeSaved(saved[0])).apply();
+                                listSaved[0].run();
+                            })
+                            .setNegativeButton(R.string.cancel, null)
+                            .show();
+                    return true;
+                });
+                savedList.addView(b);
+            }
+        };
+        listSaved[0].run();
+
+        view.findViewById(R.id.tune_up).setOnClickListener(v -> {
+            if (rig.lastFrequency() > 0)
+                tuneTo.accept(RigFrequencies.step(rig.lastFrequency(),
+                        RigFrequencies.STEPS_HZ[Math.max(0, stepSpinner.getSelectedItemPosition())], +1));
+        });
+        view.findViewById(R.id.tune_down).setOnClickListener(v -> {
+            if (rig.lastFrequency() > 0)
+                tuneTo.accept(RigFrequencies.step(rig.lastFrequency(),
+                        RigFrequencies.STEPS_HZ[Math.max(0, stepSpinner.getSelectedItemPosition())], -1));
+        });
+        stepSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(android.widget.AdapterView<?> parent, View v, int position, long id) {
+                prefs.edit().putInt(RigSettings.KEY_STEP, RigFrequencies.STEPS_HZ[position]).apply();
+            }
+
+            @Override
+            public void onNothingSelected(android.widget.AdapterView<?> parent) {
+            }
+        });
+        view.findViewById(R.id.tune_set).setOnClickListener(v -> {
+            long hz = RigFrequencies.parseMhz(entry.getText().toString());
+            if (hz < 0) {
+                messageText.setText(R.string.rig_bad_frequency);
+                return;
+            }
+            tuneTo.accept(hz);
+        });
+        view.findViewById(R.id.tune_save).setOnClickListener(v -> {
+            double hz = rig.lastFrequency();
+            if (hz <= 0)
+                return;
+            EditText name = new EditText(this);
+            name.setHint(R.string.tune_save_name);
+            name.setSingleLine(true);
+            FrameLayout box = new FrameLayout(this);
+            int pad = Math.round(20 * getResources().getDisplayMetrics().density);
+            box.setPadding(pad, 0, pad, 0);
+            box.addView(name);
+            new AlertDialog.Builder(this, R.style.Theme_AlertDialog)
+                    .setTitle(RigFrequencies.format(hz))
+                    .setView(box)
+                    .setPositiveButton(R.string.okay, (d, w) -> {
+                        saved[0] = RigFrequencies.withSaved(saved[0], Math.round(hz), name.getText().toString());
+                        prefs.edit().putString(RigSettings.KEY_SAVED_FREQUENCIES, RigFrequencies.serializeSaved(saved[0])).apply();
+                        listSaved[0].run();
+                    })
+                    .setNegativeButton(R.string.cancel, null)
+                    .show();
+        });
+
+        show.run();
+        // The radio may have been tuned by hand since the last read: read it again (no polling otherwise)
+        messageText.setText(R.string.tune_reading);
+        rig.readFrequency(done);
+        new AlertDialog.Builder(this, R.style.Theme_AlertDialog)
+                .setTitle(R.string.tune_title)
+                .setView(view)
+                .setPositiveButton(R.string.okay, null)
+                .show();
     }
 
     /** Fills the model picker (search by any part of the name) and shows the chosen model. */

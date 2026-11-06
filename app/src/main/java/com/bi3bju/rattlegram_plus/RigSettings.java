@@ -14,6 +14,9 @@ final class RigSettings {
     static final String KEY_CAT_PTT = "rigCatPtt";
     static final String KEY_KEY_UP_DELAY = "rigKeyUpDelay";
     static final String KEY_DATA_MODE = "rigDataMode";
+    /** Tuning step and saved frequencies for the Tune window. */
+    static final String KEY_STEP = "rigStepHz";
+    static final String KEY_SAVED_FREQUENCIES = "rigSavedFrequencies";
 
     static final int NO_MODEL = 0;
     /** Time between the radio confirming PTT and the audio starting, for its transmitter to settle. */

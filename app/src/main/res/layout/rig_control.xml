@@ -151,34 +151,11 @@
                         android:layout_weight="1" />
 
                     <Button
-                        android:id="@+id/rig_read"
+                        android:id="@+id/rig_tune"
                         style="?android:attr/borderlessButtonStyle"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="@string/rig_read" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <EditText
-                        android:id="@+id/rig_set_frequency"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:hint="@string/rig_frequency_hint"
-                        android:importantForAutofill="no"
-                        android:inputType="numberDecimal" />
-
-                    <Button
-                        android:id="@+id/rig_set"
-                        style="?android:attr/borderlessButtonStyle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/rig_set" />
+                        android:text="@string/tune_button" />
                 </LinearLayout>
 
                 <Button

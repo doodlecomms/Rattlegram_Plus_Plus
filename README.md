@@ -67,7 +67,7 @@ Tested with a UV-Pro (firmware 0.9.3) and Samsung Galaxy A15 phones. The Vero VR
 
 Off by default; a fresh install works exactly as before. **Menu → Rig Control (Hamlib) → Enable Hamlib rig control** adds CAT control of a radio on a **USB serial (CAT) cable**:
 
-- **Read and set the radio's frequency** (only when you tap Read or Set; nothing is ever retuned on its own).
+- **Tune the radio:** while it is connected the main screen's status line shows its frequency (*Listening · 146.550 MHz*); tap it (or Rig Control → Tune…) for step up/down (5 kHz to 1 MHz), typing a frequency, and your own saved frequencies (tap to tune, long-press to delete). The frequency is read when you connect and when you open Tune; the radio is never polled and never retuned on its own, and tuning is refused while transmitting.
 - **Key the radio by CAT (PTT) for every transmission**: the app keys the radio, waits until the radio confirms it is transmitting plus the key-up delay, then plays the audio, and unkeys right after the last audio has played. If the radio cannot be keyed, nothing is sent. With CAT PTT on and the radio not connected, transmissions are refused instead of going out by VOX.
 - A connected Bluetooth radio keys itself; Hamlib then does not key the CAT radio.
 - **Optional: put the radio in data mode while connected** (off by default). On Connect the app switches the radio to the data mode matching its current mode — FM to packet FM (the FT-857D's **PKT**), USB to packet USB (its **DIG**), LSB to packet LSB — and back to the mode it found when you disconnect or close the app. A radio already in a data mode is left alone. What PKT or DIG means still depends on the radio's own menus (on the FT-857D, PKT is FM-based when PKT RATE is 1200).
