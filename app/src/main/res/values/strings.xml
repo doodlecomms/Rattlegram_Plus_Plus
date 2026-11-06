@@ -129,6 +129,8 @@ The resulting text message from the COFDMTV decoder is the only data that gets s
 \n\nFancy header font:\nhttp://terminus-font.sourceforge.net\nSIL Open Font License
 \n\nBluetooth radio audio (SBC codec):\nhttps://github.com/google/libsbc\nApache License 2.0
 \n\nQR codes:\nhttps://github.com/zxing/zxing\nhttps://github.com/journeyapps/zxing-android-embedded\nApache License 2.0
+\n\nOptional rig control (Hamlib):\nhttps://github.com/Hamlib/Hamlib\nGNU Lesser General Public License 2.1 or later. Hamlib is included as a separate library (libhamlib.so) with Android patches. Its source, patches and instructions to rebuild and replace it:\nhttps://github.com/doodlecomms/Rattlegram_Plus_Plus/tree/main/hamlib\nhttps://github.com/doodlecomms/hamlib-android
+\n\nUSB serial (CAT) adapters:\nhttps://github.com/mik3y/usb-serial-for-android\nMIT License, Copyright (c) 2011-2013 Google Inc., Copyright (c) 2013 Mike Wakerly
 \n\nBTech UV-Pro / Vero VR-N76 Bluetooth protocol details from HTCommander:\nhttps://github.com/Ylianst/HTCommander
 \n\nDISCLAIMER:\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.</string>
 	<string name="base37_characters">(space, 0–9, A-Z)</string>

@@ -33,7 +33,7 @@ Rattlegram Plus Plus is released under the BSD Zero Clause License (see [LICENSE
 
 ### usb-serial-for-android — USB serial (CAT) adapters for optional rig control
 - Source: https://github.com/mik3y/usb-serial-for-android
-- License: MIT License
+- License: MIT License — Copyright (c) 2011-2013 Google Inc., Copyright (c) 2013 Mike Wakerly
 
 ### ZXing and zxing-android-embedded — QR codes
 - Sources: https://github.com/zxing/zxing, https://github.com/journeyapps/zxing-android-embedded
