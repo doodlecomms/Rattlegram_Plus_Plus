@@ -16,6 +16,7 @@ public class RigSettingsTest {
         assertFalse(s.enabled);
         assertEquals(RigSettings.NO_MODEL, s.model);
         assertFalse("a fresh install never requires CAT PTT", s.requiresCatPtt());
+        assertFalse("the radio's mode is never changed unless asked", s.dataMode);
     }
 
     @Test

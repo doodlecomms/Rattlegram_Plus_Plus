@@ -143,6 +143,8 @@ public class MainActivity extends AppCompatActivity {
     private boolean catPttTransmission;
     /** Audio frames written to the AudioTrack for the transmission playing now. */
     private long framesWritten;
+    /** Hamlib's Yaesu FT-857 model, for its setup reminder in the rig dialog. */
+    private static final int RIG_MODEL_FT857 = 1022;
     /** How long the radio stays keyed after the last audio has played. */
     private static final long RIG_PTT_TAIL_MS = 100;
     private boolean activityResumed;
@@ -2661,12 +2663,11 @@ public class MainActivity extends AppCompatActivity {
     private final RigController.Listener rigListener = new RigController.Listener() {
         @Override
         public void onRigState(RigController.State state, String message) {
-            if (state == RigController.State.DISCONNECTED) {
-                if (catPttTransmission)
-                    abortTransmission(null);
-                if (message != null)
-                    Toast.makeText(MainActivity.this, message, Toast.LENGTH_LONG).show();
-            }
+            if (state == RigController.State.DISCONNECTED && catPttTransmission)
+                abortTransmission(null);
+            // Failures, and "connected but not in data mode"; while connecting the dialog shows the message
+            if (message != null && state != RigController.State.CONNECTING)
+                Toast.makeText(MainActivity.this, message, Toast.LENGTH_LONG).show();
             if (rigDialogRefresh != null)
                 rigDialogRefresh.run();
         }
@@ -2703,6 +2704,7 @@ public class MainActivity extends AppCompatActivity {
                 .putInt(RigSettings.KEY_BAUD, rigSettings.baudRate)
                 .putBoolean(RigSettings.KEY_CAT_PTT, rigSettings.catPtt)
                 .putInt(RigSettings.KEY_KEY_UP_DELAY, rigSettings.keyUpDelayMs)
+                .putBoolean(RigSettings.KEY_DATA_MODE, rigSettings.dataMode)
                 .apply();
     }
 
@@ -2717,7 +2719,9 @@ public class MainActivity extends AppCompatActivity {
         AutoCompleteTextView modelEdit = view.findViewById(R.id.rig_model);
         Spinner deviceSpinner = view.findViewById(R.id.rig_device);
         Spinner baudSpinner = view.findViewById(R.id.rig_baud);
+        TextView baudHint = view.findViewById(R.id.rig_baud_hint);
         CheckBox pttCheck = view.findViewById(R.id.rig_cat_ptt);
+        CheckBox dataModeCheck = view.findViewById(R.id.rig_data_mode);
         EditText delayEdit = view.findViewById(R.id.rig_delay);
         TextView statusText = view.findViewById(R.id.rig_status);
         Button connectButton = view.findViewById(R.id.rig_connect);
@@ -2726,6 +2730,14 @@ public class MainActivity extends AppCompatActivity {
         EditText frequencyEdit = view.findViewById(R.id.rig_set_frequency);
         final RigSettings s = rigSettings;
         final int[] chosenModel = {s.model};
+        // Radio-specific reminders, shown only for that model
+        Runnable showBaudHint = () -> {
+            boolean ft857 = chosenModel[0] == RIG_MODEL_FT857;
+            baudHint.setVisibility(ft857 ? View.VISIBLE : View.GONE);
+            if (ft857)
+                baudHint.setText(R.string.rig_baud_hint_ft857);
+        };
+        showBaudHint.run();
 
         String[] baudLabels = new String[RigSettings.BAUD_RATES.length];
         for (int i = 0; i < baudLabels.length; ++i)
@@ -2738,6 +2750,7 @@ public class MainActivity extends AppCompatActivity {
         };
         selectBaud.run();
         pttCheck.setChecked(s.catPtt);
+        dataModeCheck.setChecked(s.dataMode);
         delayEdit.setText(String.valueOf(s.keyUpDelayMs));
 
         // USB serial adapters plugged in now; listing them needs no permission
@@ -2772,6 +2785,7 @@ public class MainActivity extends AppCompatActivity {
                 s.device = deviceKeys.get(d);
             s.baudRate = RigSettings.BAUD_RATES[Math.max(0, baudSpinner.getSelectedItemPosition())];
             s.catPtt = pttCheck.isChecked();
+            s.dataMode = dataModeCheck.isChecked();
             try {
                 s.keyUpDelayMs = RigSettings.clampDelay(Integer.parseInt(delayEdit.getText().toString().trim()));
             } catch (NumberFormatException e) {
@@ -2788,6 +2802,7 @@ public class MainActivity extends AppCompatActivity {
             deviceSpinner.setEnabled(editable);
             baudSpinner.setEnabled(editable);
             pttCheck.setEnabled(editable);
+            dataModeCheck.setEnabled(editable);
             delayEdit.setEnabled(editable);
             connectButton.setText(editable ? R.string.rig_connect : R.string.rig_disconnect);
             tools.setVisibility(state == RigController.State.CONNECTED ? View.VISIBLE : View.GONE);
@@ -2803,14 +2818,20 @@ public class MainActivity extends AppCompatActivity {
 
         Runnable loadModels = () -> {
             if (rigModels != null) {
-                showModels(modelEdit, chosenModel, s, selectBaud);
+                showModels(modelEdit, chosenModel, s, () -> {
+                    selectBaud.run();
+                    showBaudHint.run();
+                });
                 return;
             }
             new Thread(() -> {
                 List<HamlibRig.Model> models = HamlibRig.models();
                 handler.post(() -> {
                     rigModels = models;
-                    showModels(modelEdit, chosenModel, s, selectBaud);
+                    showModels(modelEdit, chosenModel, s, () -> {
+                        selectBaud.run();
+                        showBaudHint.run();
+                    });
                     refresh.run();
                 });
             }, "rig-models").start();

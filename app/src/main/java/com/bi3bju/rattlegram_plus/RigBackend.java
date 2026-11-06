@@ -23,4 +23,10 @@ interface RigBackend {
     void setFrequency(double hz) throws RigException;
 
     void setPtt(boolean on) throws RigException;
+
+    /** {mode, filter width} as Hamlib reports them (mode is a RigModes value). */
+    long[] getMode() throws RigException;
+
+    /** Sets the mode; a negative width keeps the current filter. */
+    void setMode(long mode, long width) throws RigException;
 }

@@ -312,8 +312,12 @@ The resulting text message from the COFDMTV decoder is the only data that gets s
 	<string name="rig_device">USB serial (CAT) adapter</string>
 	<string name="rig_no_devices">No USB serial adapter plugged in</string>
 	<string name="rig_baud">Baud rate (must match the radio\'s CAT rate setting)</string>
+	<string name="rig_baud_hint_ft857">FT-857D: the CAT rate is menu 19 (CAT RATE). For Rattlegram\'s audio through the DATA jack, put the radio in PKT mode.</string>
 	<string name="rig_cat_ptt">Key the radio with CAT (PTT)</string>
 	<string name="rig_key_up_delay">Key-up delay (ms)</string>
+	<string name="rig_data_mode">Put the radio in data mode while connected (e.g. FM → PKT), and back afterwards</string>
+	<string name="rig_data_mode_none">Connected, but there is no data mode for the radio\'s %1$s mode. Set its data mode by hand.</string>
+	<string name="rig_data_mode_failed">Connected, but the radio could not be put in data mode (%1$s). Set its data mode (e.g. PKT) by hand.</string>
 	<string name="rig_connect">Connect</string>
 	<string name="rig_disconnect">Disconnect</string>
 	<string name="rig_read">Read</string>

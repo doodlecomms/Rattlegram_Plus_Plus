@@ -29,7 +29,7 @@ final class HamlibRig implements RigBackend {
     /** Serial settings and supported operations of a model, from Hamlib's capabilities. */
     static final class ModelInfo {
         final int rateMin, rateMax, dataBits, stopBits, parity;
-        final boolean serial, canGetFrequency, canSetFrequency, canSetPtt, canGetPtt;
+        final boolean serial, canGetFrequency, canSetFrequency, canSetPtt, canGetPtt, canGetMode, canSetMode;
 
         ModelInfo(int[] info) {
             rateMin = info[0];
@@ -42,6 +42,8 @@ final class HamlibRig implements RigBackend {
             canSetFrequency = info[7] != 0;
             canSetPtt = info[8] != 0;
             canGetPtt = info.length > 9 && info[9] != 0;
+            canGetMode = info.length > 10 && info[10] != 0;
+            canSetMode = info.length > 11 && info[11] != 0;
         }
     }
 
@@ -151,6 +153,24 @@ final class HamlibRig implements RigBackend {
             throw new RigException(nativeErrorText(rc));
     }
 
+    @Override
+    public long[] getMode() throws RigException {
+        check();
+        long[] mode = new long[2];
+        int rc = nativeGetMode(handle, mode);
+        if (rc != 0)
+            throw new RigException(nativeErrorText(rc));
+        return mode;
+    }
+
+    @Override
+    public void setMode(long mode, long width) throws RigException {
+        check();
+        int rc = nativeSetMode(handle, mode, width);
+        if (rc != 0)
+            throw new RigException(nativeErrorText(rc));
+    }
+
     /**
      * Sets PTT and, where the radio can report it, reads it back: some radios (the FT-857 among them) give no
      * reliable acknowledgement, so "OK" alone does not prove the radio keyed or unkeyed.
@@ -204,6 +224,10 @@ final class HamlibRig implements RigBackend {
     private static native int nativeSetPtt(long handle, boolean on);
 
     private static native int nativeGetPtt(long handle);
+
+    private static native int nativeGetMode(long handle, long[] out);
+
+    private static native int nativeSetMode(long handle, long mode, long width);
 
     private static native String nativeErrorText(int code);
 

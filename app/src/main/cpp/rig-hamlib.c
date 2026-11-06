@@ -186,7 +186,7 @@ Java_com_bi3bju_rattlegram_1plus_HamlibRig_nativeListModels(JNIEnv *env, jclass 
 
 /*
  * Serial settings and capabilities of one model: {rateMin, rateMax, dataBits, stopBits, parity, portType,
- * canGetFreq, canSetFreq, canSetPtt, canGetPtt}, or null if Hamlib does not know the model.
+ * canGetFreq, canSetFreq, canSetPtt, canGetPtt, canGetMode, canSetMode}, or null if Hamlib does not know it.
  */
 JNIEXPORT jintArray JNICALL
 Java_com_bi3bju_rattlegram_1plus_HamlibRig_nativeModelInfo(JNIEnv *env, jclass cls, jint model) {
@@ -195,14 +195,15 @@ Java_com_bi3bju_rattlegram_1plus_HamlibRig_nativeModelInfo(JNIEnv *env, jclass c
 	const struct rig_caps *caps = rig_get_caps((rig_model_t) model);
 	if (!caps)
 		return NULL;
-	jint info[10] = {
+	jint info[12] = {
 		caps->serial_rate_min, caps->serial_rate_max, caps->serial_data_bits, caps->serial_stop_bits,
 		caps->serial_parity, caps->port_type,
-		caps->get_freq != NULL, caps->set_freq != NULL, caps->set_ptt != NULL, caps->get_ptt != NULL
+		caps->get_freq != NULL, caps->set_freq != NULL, caps->set_ptt != NULL, caps->get_ptt != NULL,
+		caps->get_mode != NULL, caps->set_mode != NULL
 	};
-	jintArray result = (*env)->NewIntArray(env, 10);
+	jintArray result = (*env)->NewIntArray(env, 12);
 	if (result)
-		(*env)->SetIntArrayRegion(env, result, 0, 10, info);
+		(*env)->SetIntArrayRegion(env, result, 0, 12, info);
 	return result;
 }
 
@@ -317,6 +318,29 @@ Java_com_bi3bju_rattlegram_1plus_HamlibRig_nativeSetPtt(JNIEnv *env, jclass cls,
 	(void) env;
 	(void) cls;
 	return rig_set_ptt((RIG *) (intptr_t) handle, RIG_VFO_CURR, on ? RIG_PTT_ON : RIG_PTT_OFF);
+}
+
+/* Mode and filter width into out[0..1]; returns RIG_OK or a negative Hamlib error code. */
+JNIEXPORT jint JNICALL
+Java_com_bi3bju_rattlegram_1plus_HamlibRig_nativeGetMode(JNIEnv *env, jclass cls, jlong handle, jlongArray out) {
+	(void) cls;
+	rmode_t mode = RIG_MODE_NONE;
+	pbwidth_t width = 0;
+	int rc = rig_get_mode((RIG *) (intptr_t) handle, RIG_VFO_CURR, &mode, &width);
+	if (rc != RIG_OK)
+		return rc < 0 ? rc : -rc;
+	jlong values[2] = {(jlong) mode, (jlong) width};
+	(*env)->SetLongArrayRegion(env, out, 0, 2, values);
+	return RIG_OK;
+}
+
+/* Sets the mode; a negative width keeps the radio's current filter. */
+JNIEXPORT jint JNICALL
+Java_com_bi3bju_rattlegram_1plus_HamlibRig_nativeSetMode(JNIEnv *env, jclass cls, jlong handle, jlong mode, jlong width) {
+	(void) env;
+	(void) cls;
+	return rig_set_mode((RIG *) (intptr_t) handle, RIG_VFO_CURR, (rmode_t) mode,
+			width < 0 ? RIG_PASSBAND_NOCHANGE : (pbwidth_t) width);
 }
 
 /* 1 if the radio reports it is transmitting, 0 if not, or a negative Hamlib error code. */

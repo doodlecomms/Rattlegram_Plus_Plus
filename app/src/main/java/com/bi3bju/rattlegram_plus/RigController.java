@@ -53,6 +53,8 @@ final class RigController {
     private UsbDevice device;
     private boolean receiverRegistered;
     private double lastFrequency = -1;
+    /** Mode and filter found on connect, to put back on disconnect; only touched on the rig thread. */
+    private long restoreMode, restoreWidth;
 
     private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
         @Override
@@ -151,19 +153,23 @@ final class RigController {
         final String path = "android-usb:" + device.getDeviceId() + ":0";
         rigThread.execute(() -> {
             String error = null;
+            String note = null;
             double hz = -1;
             try {
                 backend.open(s, path);
                 HamlibRig.ModelInfo info = HamlibRig.modelInfo(s.model);
                 if (info != null && info.canGetFrequency) {
-                    // Reading the frequency also proves the radio answers; nothing is ever set on connect
+                    // Reading the frequency also proves the radio answers; it is never tuned on connect
                     hz = backend.getFrequency();
                 }
+                if (s.dataMode)
+                    note = enterDataMode();
             } catch (RigBackend.RigException e) {
                 backend.close();
                 error = e.getMessage();
             }
             final String failure = error;
+            final String dataModeNote = note;
             final double frequency = hz;
             main.post(() -> {
                 if (state != State.CONNECTING)
@@ -172,19 +178,52 @@ final class RigController {
                     fail(context.getString(R.string.rig_open_failed, failure));
                 } else {
                     lastFrequency = frequency;
-                    setState(State.CONNECTED, null);
+                    setState(State.CONNECTED, dataModeNote);
                 }
             });
         });
     }
 
-    /** Unkeys the radio if needed and closes the connection. */
+    /**
+     * On the rig thread: puts the radio in the data mode that matches its mode (FM to packet FM, the FT-857's
+     * PKT), remembering the mode to restore. Returns a note for the user if that was not possible, else null.
+     */
+    private String enterDataMode() {
+        restoreMode = 0;
+        try {
+            long[] current = backend.getMode();
+            if (RigModes.isDataMode(current[0]))
+                return null; // already there; leave it as the user set it
+            long target = RigModes.dataModeFor(current[0]);
+            if (target == 0)
+                return context.getString(R.string.rig_data_mode_none, RigModes.name(current[0]));
+            backend.setMode(target, -1);
+            restoreMode = current[0];
+            restoreWidth = current[1];
+            return null;
+        } catch (RigBackend.RigException e) {
+            return context.getString(R.string.rig_data_mode_failed, e.getMessage());
+        }
+    }
+
+    /** On the rig thread: puts back the mode found on connect, then closes the radio and the adapter. */
+    private void closeRig() {
+        if (restoreMode != 0 && backend.isOpen()) {
+            try {
+                backend.setMode(restoreMode, restoreWidth);
+            } catch (RigBackend.RigException ignored) {
+                // e.g. the cable is gone; nothing more can be done
+            }
+        }
+        restoreMode = 0;
+        backend.close();
+        RigUsbSerial.close();
+    }
+
+    /** Unkeys the radio if needed, puts back its mode and closes the connection. */
     void disconnect() {
         ptt.releaseNow();
-        rigThread.execute(() -> {
-            backend.close();
-            RigUsbSerial.close();
-        });
+        rigThread.execute(this::closeRig);
         unregisterReceiver();
         device = null;
         lastFrequency = -1;
@@ -250,10 +289,7 @@ final class RigController {
         boolean wasOpen = state != State.DISCONNECTED;
         ptt.releaseNow();
         if (wasOpen)
-            rigThread.execute(() -> {
-                backend.close();
-                RigUsbSerial.close();
-            });
+            rigThread.execute(this::closeRig);
         unregisterReceiver();
         device = null;
         lastFrequency = -1;

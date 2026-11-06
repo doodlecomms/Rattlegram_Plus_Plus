@@ -44,6 +44,15 @@ public class PttCoordinatorTest {
         }
 
         @Override
+        public long[] getMode() {
+            return new long[]{RigModes.FM, 0};
+        }
+
+        @Override
+        public void setMode(long mode, long width) {
+        }
+
+        @Override
         public void setPtt(boolean on) throws RigException {
             commands.add(on ? "ON" : "OFF");
             if (on && failOn > 0) {

@@ -13,6 +13,7 @@ final class RigSettings {
     static final String KEY_BAUD = "rigBaud";
     static final String KEY_CAT_PTT = "rigCatPtt";
     static final String KEY_KEY_UP_DELAY = "rigKeyUpDelay";
+    static final String KEY_DATA_MODE = "rigDataMode";
 
     static final int NO_MODEL = 0;
     /** Time between the radio confirming PTT and the audio starting, for its transmitter to settle. */
@@ -27,6 +28,8 @@ final class RigSettings {
     int baudRate = 4800;
     boolean catPtt = true;
     int keyUpDelayMs = DEFAULT_KEY_UP_DELAY_MS;
+    /** Put the radio in its data mode (FM to PKT on the FT-857) while connected, and back afterwards. */
+    boolean dataMode;
 
     /** Settings from saved preferences; an empty map (a fresh install) gives Hamlib turned off. */
     static RigSettings from(Map<String, ?> prefs) {
@@ -37,6 +40,7 @@ final class RigSettings {
         s.baudRate = get(prefs, KEY_BAUD, 4800);
         s.catPtt = get(prefs, KEY_CAT_PTT, true);
         s.keyUpDelayMs = clampDelay(get(prefs, KEY_KEY_UP_DELAY, DEFAULT_KEY_UP_DELAY_MS));
+        s.dataMode = get(prefs, KEY_DATA_MODE, false);
         return s;
     }
 
