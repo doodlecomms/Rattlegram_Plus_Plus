@@ -149,8 +149,8 @@ The resulting text message from the COFDMTV decoder is the only data that gets s
 	<string name="encryption_disabled_no_password">Set a password before encrypting</string>
 	<string name="encryption_failed">Encryption failed</string>
 	<string name="encrypted_message_too_long">Encrypted message is too long. Please shorten it.</string>
-	<string name="transmitted_encrypted">Transmitted encrypted</string>
-	<string name="received_decrypted">Received and decrypted</string>
+	<string name="transmitted_encrypted">Transmitted 🔒</string>
+	<string name="received_decrypted">Received 🔒</string>
 
 	<plurals name="bytes_left">
 		<item quantity="one">%d byte left</item>
@@ -258,7 +258,7 @@ The resulting text message from the COFDMTV decoder is the only data that gets s
 	<string name="hide_call_sign">Hide my call sign in encrypted messages</string>
 	<string name="hide_call_sign_prompt">Encrypted messages, locations, pictures and acknowledgments will show ANONYMOUS on the air. Your call sign is sent inside the encryption, so only stations with the password (and Rattlegram++ 1.2 or later) can see who sent them. Each message loses a few characters to carry it.\n\nOn amateur radio bands, transmissions must identify the station and encryption is generally not allowed. Use this only where it is legal. Enable this?</string>
 	<string name="call_sign_hidden_note">🔒 Call sign hidden (sent as ANONYMOUS)</string>
-	<string name="received_hidden">Received (call sign hidden)</string>
+	<string name="received_hidden">Received 🔒 (call sign hidden)</string>
 	<string name="app_lock">Lock App on Open</string>
 	<string name="app_lock_title">Unlock Rattlegram++</string>
 	<string name="app_lock_subtitle">Use your fingerprint, face or screen lock</string>
