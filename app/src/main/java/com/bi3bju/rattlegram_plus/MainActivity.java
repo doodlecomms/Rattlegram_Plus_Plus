@@ -138,7 +138,7 @@ public class MainActivity extends AppCompatActivity {
     private RigSettings rigSettings = new RigSettings();
     private RigController rig;
     private List<HamlibRig.Model> rigModels;
-    private Runnable rigDialogRefresh;
+    private Runnable rigDialogRefresh, tuneDialogRefresh;
     /** The transmission playing now was keyed through Hamlib and must be unkeyed when it ends. */
     private boolean catPttTransmission;
     /** Audio frames written to the AudioTrack for the transmission playing now. */
@@ -461,8 +461,12 @@ public class MainActivity extends AppCompatActivity {
     private void setStatus(String str, boolean tmp) {
         if (statusTimer != null)
             handler.removeCallbacks(statusTimer);
+        statusTimer = null;
         if (tmp) {
-            statusTimer = () -> status.setText(withRigFrequency(prevStatus));
+            statusTimer = () -> {
+                statusTimer = null;
+                status.setText(withRigFrequency(prevStatus));
+            };
             handler.postDelayed(statusTimer, 10000);
         } else {
             prevStatus = str;
@@ -2689,6 +2693,18 @@ public class MainActivity extends AppCompatActivity {
             if (rigDialogRefresh != null)
                 rigDialogRefresh.run();
             refreshStatusFrequency();
+            // Follow the radio's dial only while connected and on screen
+            if (rig != null)
+                rig.setPolling(state == RigController.State.CONNECTED && activityResumed);
+        }
+
+        @Override
+        public void onFrequency(double hz) {
+            refreshStatusFrequency();
+            if (tuneDialogRefresh != null)
+                tuneDialogRefresh.run();
+            if (rigDialogRefresh != null)
+                rigDialogRefresh.run();
         }
 
         @Override
@@ -2712,6 +2728,7 @@ public class MainActivity extends AppCompatActivity {
             return false;
         }
         rig = new RigController(this, handler, rigListener);
+        rig.setPollAllowed(() -> !catPttTransmission && !isTransmitBusy());
         return true;
     }
 
@@ -3070,14 +3087,17 @@ public class MainActivity extends AppCompatActivity {
         });
 
         show.run();
-        // The radio may have been tuned by hand since the last read: read it again (no polling otherwise)
+        // A fresh reading straight away; while the window is open the light polling keeps it current
         messageText.setText(R.string.tune_reading);
         rig.readFrequency(done);
-        new AlertDialog.Builder(this, R.style.Theme_AlertDialog)
+        tuneDialogRefresh = show;
+        AlertDialog dialog = new AlertDialog.Builder(this, R.style.Theme_AlertDialog)
                 .setTitle(R.string.tune_title)
                 .setView(view)
                 .setPositiveButton(R.string.okay, null)
-                .show();
+                .create();
+        dialog.setOnDismissListener(d -> tuneDialogRefresh = null);
+        dialog.show();
     }
 
     /** Fills the model picker (search by any part of the name) and shows the chosen model. */
@@ -4336,6 +4356,8 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         activityResumed = true;
         startListening();
+        if (rig != null)
+            rig.setPolling(rig.isConnected());
         super.onResume();
     }
 
@@ -4344,6 +4366,8 @@ public class MainActivity extends AppCompatActivity {
         activityResumed = false;
         stopListening();
         storeSettings();
+        if (rig != null)
+            rig.setPolling(false);
         super.onPause();
     }
 

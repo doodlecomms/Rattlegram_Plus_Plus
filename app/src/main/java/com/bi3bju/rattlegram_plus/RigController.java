@@ -33,7 +33,13 @@ final class RigController {
         void onRigState(State state, String message);
 
         void onPttProblem(String message);
+
+        /** The radio's frequency changed, e.g. someone turned its dial (from the light polling). */
+        void onFrequency(double hz);
     }
+
+    /** How often the frequency is read while connected and on screen, to follow the radio's dial. */
+    static final long POLL_INTERVAL_MS = 2000;
 
     interface Result<T> {
         void done(T value, String error);
@@ -53,6 +59,42 @@ final class RigController {
     private UsbDevice device;
     private boolean receiverRegistered;
     private double lastFrequency = -1;
+    private boolean polling, pollInFlight;
+    private java.util.function.BooleanSupplier pollAllowed = () -> true;
+
+    /**
+     * Follows the radio's dial: one frequency read every POLL_INTERVAL_MS while connected, never while keyed or
+     * transmitting (pollAllowed), never stacking reads, and only reporting real changes.
+     */
+    private final Runnable pollTask = new Runnable() {
+        @Override
+        public void run() {
+            if (!polling)
+                return;
+            if (isConnected() && !pollInFlight && !ptt.isKeyed() && !ptt.isKeying() && pollAllowed.getAsBoolean()
+                    && !rigThread.isShutdown()) {
+                pollInFlight = true;
+                rigThread.execute(() -> {
+                    double hz = -1;
+                    try {
+                        hz = backend.getFrequency();
+                    } catch (RigBackend.RigException ignored) {
+                        // a missed read is retried next time; it is not worth a message
+                    }
+                    final double frequency = hz;
+                    main.post(() -> {
+                        pollInFlight = false;
+                        if (frequency > 0 && state == State.CONNECTED && frequency != lastFrequency) {
+                            lastFrequency = frequency;
+                            listener.onFrequency(frequency);
+                        }
+                    });
+                });
+            }
+            main.postDelayed(this, POLL_INTERVAL_MS);
+        }
+    };
+
     /** Mode and filter found on connect, to put back on disconnect; only touched on the rig thread. */
     private long restoreMode, restoreWidth;
 
@@ -96,6 +138,21 @@ final class RigController {
                 main.removeCallbacks((Runnable) token);
             }
         }, listener::onPttProblem);
+    }
+
+    /** Turns the light frequency polling on (app on screen and connected) or off. */
+    void setPolling(boolean on) {
+        if (on == polling)
+            return;
+        polling = on;
+        main.removeCallbacks(pollTask);
+        if (on)
+            main.postDelayed(pollTask, POLL_INTERVAL_MS);
+    }
+
+    /** Extra condition for polling, e.g. "the app is not transmitting". */
+    void setPollAllowed(java.util.function.BooleanSupplier allowed) {
+        pollAllowed = allowed;
     }
 
     State state() {
@@ -249,6 +306,7 @@ final class RigController {
 
     /** For the app closing: disconnect, and let the rig thread finish the "PTT off" and close. */
     void shutdown() {
+        setPolling(false);
         if (state != State.DISCONNECTED)
             disconnect();
         rigThread.shutdown();
