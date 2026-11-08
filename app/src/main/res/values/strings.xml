@@ -118,7 +118,8 @@ Rattlegram Plus Plus uses a very small temporary buffer in volatile memory and c
 The resulting text message from the COFDMTV decoder is the only data that gets stored in persistent storage on your device.</string>
 	<string name="about">About Rattlegram Plus Plus</string>
 	<string name="about_text">Rattlegram Plus Plus %1$s
-\n\nby doodlecomms\nhttps://github.com/doodlecomms/Rattlegram_Plus-Plus
+\n\nby doodlecomms\nhttps://github.com/doodlecomms/Rattlegram_Plus_Plus
+\n\nReport a problem or suggest a feature:\nhttps://github.com/doodlecomms/Rattlegram_Plus_Plus/issues
 \n\nBased on Rattlegram Plus by BI3BJU\nhttps://github.com/BI3BJU/Rattlegram_Plus
 \n\nand on Rattlegram, Copyright 2022 aicodix GmbH\nhttps://github.com/aicodix/rattlegram
 \n\nPlease read DISCLAIMER at the bottom of this page.

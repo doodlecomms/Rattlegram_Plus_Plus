@@ -60,7 +60,7 @@ android {
     }
 
     // Fixed APK name for releases, so the permanent link
-    // https://github.com/doodlecomms/Rattlegram_Plus-Plus/releases/latest/download/RattlegramPlusPlus.apk
+    // https://github.com/doodlecomms/Rattlegram_Plus_Plus/releases/latest/download/RattlegramPlusPlus.apk
     // always finds the newest version
     applicationVariants.configureEach { variant ->
         variant.outputs.configureEach {

@@ -1,11 +1,11 @@
 # Rattlegram Plus Plus
 
 <p align="center">
-  <a href="https://github.com/doodlecomms/Rattlegram_Plus-Plus/releases/latest/download/RattlegramPlusPlus.apk"><img alt="Download the latest APK" src="https://img.shields.io/badge/%E2%AC%87%20Download-Latest%20APK-orange?style=for-the-badge&logo=android&logoColor=white" height="56"></a>
+  <a href="https://github.com/doodlecomms/Rattlegram_Plus_Plus/releases/latest/download/RattlegramPlusPlus.apk"><img alt="Download the latest APK" src="https://img.shields.io/badge/%E2%AC%87%20Download-Latest%20APK-orange?style=for-the-badge&logo=android&logoColor=white" height="56"></a>
 </p>
 <p align="center">
   <b>On your phone?</b> Tap the button above. <b>On a computer?</b> Scan this with your phone:<br>
-  <a href="https://github.com/doodlecomms/Rattlegram_Plus-Plus/releases/latest/download/RattlegramPlusPlus.apk"><img alt="QR code: download the latest APK" src="docs/download-qr.png" width="180"></a>
+  <a href="https://github.com/doodlecomms/Rattlegram_Plus_Plus/releases/latest/download/RattlegramPlusPlus.apk"><img alt="QR code: download the latest APK" src="docs/download-qr.png" width="180"></a>
 </p>
 
 Short text messages sent as sound — through the phone's speaker and microphone, a cable to a radio, or **wirelessly over Bluetooth to a BTech UV-Pro / Vero VR-N76**. No Wi-Fi or cellular network needed.
@@ -48,7 +48,7 @@ Rattlegram Plus Plus is an independent fork of [Rattlegram Plus](https://github.
 
 ## Install
 
-1. Download the latest APK: **[RattlegramPlusPlus.apk](https://github.com/doodlecomms/Rattlegram_Plus-Plus/releases/latest/download/RattlegramPlusPlus.apk)** (always the newest version; older ones are on the [Releases page](https://github.com/doodlecomms/Rattlegram_Plus-Plus/releases)).
+1. Download the latest APK: **[RattlegramPlusPlus.apk](https://github.com/doodlecomms/Rattlegram_Plus_Plus/releases/latest/download/RattlegramPlusPlus.apk)** (always the newest version; older ones are on the [Releases page](https://github.com/doodlecomms/Rattlegram_Plus_Plus/releases)).
 2. Allow your browser or file manager to install unknown apps when Android asks.
 3. Install and open it, then allow the microphone (needed to receive) and, if you want GPS features, location.
 
@@ -101,8 +101,8 @@ Danger Zone → Password: **Generate Random Password**, then **Show QR** on one 
 ## Building from source
 
 ```bash
-git clone https://github.com/doodlecomms/Rattlegram_Plus-Plus.git
-cd Rattlegram_Plus-Plus
+git clone https://github.com/doodlecomms/Rattlegram_Plus_Plus.git
+cd Rattlegram_Plus_Plus
 ./gradlew assembleDebug
 ```
 
@@ -131,6 +131,10 @@ Without that file, `./gradlew assembleRelease` falls back to the debug key.
 | Camera | Scan a password QR code (asked only when you tap Scan QR) |
 | Internet | Map display for received locations |
 | USB device access | Only with optional Hamlib rig control: Android asks for access to the USB CAT adapter when you tap Connect (no app permission is added) |
+
+## Reporting a problem
+
+Found a bug or have a suggestion? [Open an issue](https://github.com/doodlecomms/Rattlegram_Plus_Plus/issues). Please say which version you have (Menu → About), your phone model and Android version, and, if it involves a radio, which radio and how it is connected.
 
 ## Credits and license
 
