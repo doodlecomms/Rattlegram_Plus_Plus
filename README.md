@@ -1,6 +1,12 @@
 # Rattlegram Plus Plus
 
 <p align="center">
+  <a href="https://obtainium.imranr.dev"><img alt="Get it on Obtainium" src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" height="56"></a>
+</p>
+<p align="center">
+  ⭐ <b>Best and preferred way to install:</b> <a href="https://obtainium.imranr.dev">Obtainium</a>. It downloads the app straight from this page's releases and <b>checks for updates for you</b>, so you are told when a new version is out and can update with one tap. See <a href="#install">Install</a>.
+</p>
+<p align="center">
   <a href="https://github.com/doodlecomms/Rattlegram_Plus_Plus/releases/latest/download/RattlegramPlusPlus.apk"><img alt="Download the latest APK" src="https://img.shields.io/badge/%E2%AC%87%20Download-Latest%20APK-orange?style=for-the-badge&logo=android&logoColor=white" height="56"></a>
 </p>
 <p align="center">
@@ -47,6 +53,18 @@ Rattlegram Plus Plus is an independent fork of [Rattlegram Plus](https://github.
 - 🎚️ Sample rate, channel, audio source, carrier frequency and leading-noise settings
 
 ## Install
+
+### With Obtainium (best, preferred)
+
+<a href="https://obtainium.imranr.dev"><img alt="Get it on Obtainium" src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" height="48"></a>
+
+[Obtainium](https://obtainium.imranr.dev) is a free, open-source Android app that installs apps directly from their GitHub releases and **keeps checking for updates**. When a new version of Rattlegram Plus Plus is released, Obtainium notifies you and updates it with one tap, so you never have to come back here to look for a new APK.
+
+1. Install Obtainium from [obtainium.imranr.dev](https://obtainium.imranr.dev).
+2. On your phone, tap **[Add Rattlegram Plus Plus to Obtainium](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/doodlecomms/Rattlegram_Plus_Plus)** — or in Obtainium tap **Add App** and paste `https://github.com/doodlecomms/Rattlegram_Plus_Plus`.
+3. Tap **Install**, allow Obtainium to install unknown apps when Android asks, then open the app and allow the microphone (needed to receive) and, if you want GPS features, location.
+
+### Direct download
 
 1. Download the latest APK: **[RattlegramPlusPlus.apk](https://github.com/doodlecomms/Rattlegram_Plus_Plus/releases/latest/download/RattlegramPlusPlus.apk)** (always the newest version; older ones are on the [Releases page](https://github.com/doodlecomms/Rattlegram_Plus_Plus/releases)).
 2. Allow your browser or file manager to install unknown apps when Android asks.
