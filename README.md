@@ -1,7 +1,8 @@
 # Rattlegram Plus Plus
 
 <p align="center">
-  <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/doodlecomms/Rattlegram_Plus_Plus"><img alt="Add to Obtainium" src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" height="56"></a>
+  <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/doodlecomms/Rattlegram_Plus_Plus"><img alt="Add to Obtainium" src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" height="56"></a><br>
+  Don't have Obtainium yet? <a href="https://obtainium.imranr.dev">Install it first</a>, then come back and tap the badge.
 </p>
 <p align="center">
   ⭐ <b>Best and preferred way to install:</b> <a href="https://obtainium.imranr.dev">Obtainium</a>. It downloads the app straight from this page's releases and <b>checks for updates for you</b>, so you are told when a new version is out and can update with one tap.<br>
@@ -57,7 +58,8 @@ Rattlegram Plus Plus is an independent fork of [Rattlegram Plus](https://github.
 
 ### With Obtainium (best, preferred)
 
-<a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/doodlecomms/Rattlegram_Plus_Plus"><img alt="Add to Obtainium" src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" height="48"></a>
+<a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/doodlecomms/Rattlegram_Plus_Plus"><img alt="Add to Obtainium" src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" height="48"></a><br>
+Don't have Obtainium yet? [Install it first](https://obtainium.imranr.dev), then come back and tap the badge.
 
 [Obtainium](https://obtainium.imranr.dev) is a free, open-source Android app that installs apps directly from their GitHub releases and **keeps checking for updates**. When a new version of Rattlegram Plus Plus is released, Obtainium notifies you and updates it with one tap, so you never have to come back here to look for a new APK.
 
