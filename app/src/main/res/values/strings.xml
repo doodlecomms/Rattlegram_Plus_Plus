@@ -388,4 +388,17 @@ The resulting text message from the COFDMTV decoder is the only data that gets s
 	<string name="radio_permission_denied">Bluetooth permission denied</string>
 	<string name="radio_busy">The radio is still transmitting</string>
 	<string name="radio_disconnect_first">Disconnect the Bluetooth radio first</string>
+	<!-- New-message notifications -->
+	<string name="notifications">Notifications</string>
+	<string name="notify_messages">Notify on new messages</string>
+	<string name="notify_sound_settings">Sound and vibration…</string>
+	<string name="notify_channel">New messages</string>
+	<string name="notify_channel_description">Messages received while the app is not on screen</string>
+	<string name="notify_new_message">New message</string>
+	<string name="notify_from">Message from %1$s</string>
+	<string name="notify_locked">Encrypted message (needs the password)</string>
+	<string name="notify_picture">📷 Picture</string>
+	<string name="notify_permission_denied">Notification permission denied, so notifications stay off</string>
+	<string name="notify_blocked">Notifications are switched off for this app in Android\'s settings; turn them on there</string>
+	<string name="notify_settings_failed">Could not open the notification settings</string>
 </resources>
