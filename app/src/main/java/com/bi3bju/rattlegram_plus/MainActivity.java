@@ -127,6 +127,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
     private ArrayList<Message> repeatedMessages;
+    private final ReplayGuard replayGuard = new ReplayGuard();
     private final ReceiveFilter receiveFilter = new ReceiveFilter();
 
     private final int permissionID = 1;
@@ -463,7 +464,11 @@ public class MainActivity extends AppCompatActivity {
                     String sender = parseCallSign(stagedCall);
                     String received = new String(payload).trim();
                     PictureCodec.Packet picturePart = PictureCodec.parse(received);
-                    String plain = picturePart == null ? CryptoUtils.decrypt(received, password) : null;
+                    String stamped = picturePart == null ? CryptoUtils.decrypt(received, password) : null;
+                    // Replay protection: an encrypted message must carry a recent time stamp and arrive only once
+                    if (stamped != null && replayGuard.enabled && replayRejected(sender, stamped, received))
+                        break;
+                    String plain = ReplayGuard.strip(stamped);
                     String[] hidden = HiddenCall.unwrap(plain);
                     if (repeaterMode) {
                         boolean encrypted = plain != null || ReceiveFilter.looksEncrypted(received)
@@ -708,6 +713,99 @@ public class MainActivity extends AppCompatActivity {
             menu.findItem(R.id.action_show_level).setChecked(show);
     }
 
+    /**
+     * Applies replay protection to a freshly received encrypted message (decrypted, still with its time stamp).
+     * Returns true, and says why on the status line, when it is to be dropped.
+     */
+    private boolean replayRejected(String headerCall, String stamped, String ciphertext) {
+        long now = System.currentTimeMillis();
+        ReplayGuard.Verdict v = replayGuard.check(stamped, ciphertext, now);
+        if (v == ReplayGuard.Verdict.OK)
+            return false;
+        String[] hidden = HiddenCall.unwrap(ReplayGuard.strip(stamped));
+        String who = hidden != null ? hidden[0] : headerCall;
+        long off = replayGuard.secondsOutside(stamped, now);
+        switch (v) {
+            case NO_STAMP:
+                setStatus(getString(R.string.replay_no_stamp, who), true);
+                break;
+            case TOO_OLD:
+                setStatus(getString(R.string.replay_too_old, who, off), true);
+                break;
+            case FROM_FUTURE:
+                setStatus(getString(R.string.replay_from_future, who, off), true);
+                break;
+            default:
+                setStatus(getString(R.string.replay_replayed, who), true);
+                break;
+        }
+        return true;
+    }
+
+    /** When a list entry was added (its first line starts with the local time), in ms; now if unreadable. */
+    private long entryTime(String entry) {
+        try {
+            Date d = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).parse(entry.substring(0, 19));
+            return d != null ? d.getTime() : System.currentTimeMillis();
+        } catch (Exception e) {
+            return System.currentTimeMillis();
+        }
+    }
+
+    private void loadReplayProtection() {
+        SharedPreferences pref = getPreferences(Context.MODE_PRIVATE);
+        replayGuard.enabled = pref.getBoolean("replayProtection", false);
+        replayGuard.windowSeconds = pref.getInt("replayWindow", ReplayGuard.DEFAULT_WINDOW_SECONDS);
+    }
+
+    private void showReplayProtectionDialog() {
+        View view = getLayoutInflater().inflate(R.layout.replay_protection, null);
+        CheckBox enable = view.findViewById(R.id.replay_enable);
+        android.widget.RadioGroup windows = view.findViewById(R.id.replay_windows);
+        TextView clock = view.findViewById(R.id.replay_clock);
+        enable.setChecked(replayGuard.enabled);
+        for (int i = 0; i < ReplayGuard.WINDOWS_SECONDS.length; ++i) {
+            android.widget.RadioButton b = new android.widget.RadioButton(this);
+            b.setId(View.generateViewId());
+            b.setTag(ReplayGuard.WINDOWS_SECONDS[i]);
+            b.setText(getString(R.string.replay_window_choice, ReplayGuard.describe(ReplayGuard.WINDOWS_SECONDS[i])));
+            windows.addView(b);
+            if (ReplayGuard.WINDOWS_SECONDS[i] == replayGuard.windowSeconds)
+                b.setChecked(true);
+        }
+        // This phone's clock in UTC, so two people can compare clocks before relying on it
+        SimpleDateFormat utc = new SimpleDateFormat("HH:mm:ss", Locale.US);
+        utc.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+        Runnable tick = new Runnable() {
+            @Override
+            public void run() {
+                clock.setText(getString(R.string.replay_clock, utc.format(new Date())));
+                clock.postDelayed(this, 1000);
+            }
+        };
+        tick.run();
+        new AlertDialog.Builder(this, R.style.Theme_AlertDialog)
+                .setTitle(R.string.replay_protection)
+                .setView(view)
+                .setPositiveButton(R.string.okay, (d, w) -> {
+                    replayGuard.enabled = enable.isChecked();
+                    View chosen = windows.findViewById(windows.getCheckedRadioButtonId());
+                    if (chosen != null)
+                        replayGuard.windowSeconds = (Integer) chosen.getTag();
+                    if (!replayGuard.enabled)
+                        replayGuard.forget();
+                    getPreferences(Context.MODE_PRIVATE).edit()
+                            .putBoolean("replayProtection", replayGuard.enabled)
+                            .putInt("replayWindow", replayGuard.windowSeconds)
+                            .apply();
+                    if (replayGuard.enabled && (password == null || password.isEmpty()))
+                        Toast.makeText(this, R.string.replay_needs_password, Toast.LENGTH_LONG).show();
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .setOnDismissListener(d -> clock.removeCallbacks(tick))
+                .show();
+    }
+
     private void setStatus(String str, boolean tmp) {
         if (statusTimer != null)
             handler.removeCallbacks(statusTimer);
@@ -821,7 +919,7 @@ public class MainActivity extends AppCompatActivity {
     // with the password) is marked with the lock; plain "Received" means it was sent in the clear.
     private String addMessage(String call, String info, String mesg) {
         if (info.equals(getString(R.string.received))) {
-            String decrypted = CryptoUtils.decrypt(mesg, password);
+            String decrypted = decryptText(mesg);
             if (decrypted != null) {
                 mesg = decrypted;
                 info = getString(R.string.received_decrypted);
@@ -1378,6 +1476,7 @@ public class MainActivity extends AppCompatActivity {
         payload = new byte[170];
         repeatedMessages = new ArrayList<>();
         loadContacts();
+        loadReplayProtection();
         loadReceiveFilters();
         prunePictures();
         messageListView = binding.messages;
@@ -2324,6 +2423,10 @@ public class MainActivity extends AppCompatActivity {
             forcedQuit();
             return true;
         }
+        if (id == R.id.action_replay_protection) {
+            showReplayProtectionDialog();
+            return true;
+        }
         if (id == R.id.action_password) {
             showPasswordDialog();
             return true;
@@ -2406,9 +2509,18 @@ public class MainActivity extends AppCompatActivity {
         return hideCallSign && password != null && !password.isEmpty() && hasRealCallSign();
     }
 
-    /** Extra bytes the hidden call sign takes from an encrypted message, or 0 when it is not hidden. */
-    private int hiddenCallOverhead() {
-        return hidingCallSign() ? HiddenCall.overhead(callSign.trim()) : 0;
+    /**
+     * Extra bytes an encrypted message loses before encryption: to the hidden call sign while it is hidden,
+     * and to the time stamp while replay protection is on.
+     */
+    private int encryptedOverhead() {
+        return (hidingCallSign() ? HiddenCall.overhead(callSign.trim()) : 0)
+                + (replayGuard.enabled ? ReplayGuard.OVERHEAD : 0);
+    }
+
+    /** Decrypts a received text with our password and removes a sender's time stamp; null if it does not decrypt. */
+    private String decryptText(String text) {
+        return ReplayGuard.strip(CryptoUtils.decrypt(text, password));
     }
 
     private void confirmWipeAllData() {
@@ -2666,7 +2778,7 @@ public class MainActivity extends AppCompatActivity {
                 int[] thresholds;
                 if (encrypt) {
                     // A hidden call sign travels inside the encryption and takes from the same space
-                    int o = hiddenCallOverhead();
+                    int o = encryptedOverhead();
                     thresholds = new int[]{35 - o, 68 - o, 99 - o};
                 } else {
                     thresholds = new int[]{85, 128, 170};
@@ -2770,7 +2882,7 @@ public class MainActivity extends AppCompatActivity {
         };
 
         // Same limits as the compose window: 170 bytes plain, 99 bytes before encryption
-        final int limit = encrypted ? 99 - hiddenCallOverhead() : 170;
+        final int limit = encrypted ? 99 - encryptedOverhead() : 170;
         Runnable updateBytes = () -> {
             String report = SaluteReport.build(sizeEdit.getText().toString(), activityEdit.getText().toString(),
                     locationEdit.getText().toString(), unitEdit.getText().toString(),
@@ -3883,7 +3995,7 @@ public class MainActivity extends AppCompatActivity {
         if (password == null || password.isEmpty())
             return;
         String receivedTitle = " - " + getString(R.string.received) + ":";
-        int unlocked = 0;
+        int unlocked = 0, rejected = 0;
         for (String entry : new ArrayList<>(Arrays.asList(storedEntries()))) {
             int nl = entry.indexOf('\n');
             if (nl < 0 || !entry.substring(0, nl).endsWith(receivedTitle))
@@ -3892,6 +4004,12 @@ public class MainActivity extends AppCompatActivity {
             String plain = CryptoUtils.decrypt(body, password);
             if (plain == null)
                 continue;
+            // With replay protection on, a message is only unlocked if it was recent when it arrived
+            if (replayGuard.enabled && replayGuard.checkTime(plain, entryTime(entry)) != ReplayGuard.Verdict.OK) {
+                ++rejected;
+                continue;
+            }
+            plain = ReplayGuard.strip(plain);
             String[] hidden = HiddenCall.unwrap(plain);
             java.util.regex.Matcher ack = ACK_PATTERN.matcher(hidden != null ? hidden[1] : plain);
             if (ack.matches()) {
@@ -3926,6 +4044,9 @@ public class MainActivity extends AppCompatActivity {
         if (unlocked > 0)
             Toast.makeText(this, getResources().getQuantityString(R.plurals.messages_unlocked, unlocked, unlocked),
                     Toast.LENGTH_SHORT).show();
+        if (rejected > 0)
+            Toast.makeText(this, getResources().getQuantityString(R.plurals.replay_not_unlocked, rejected, rejected),
+                    Toast.LENGTH_LONG).show();
     }
 
     private String[] storedEntries() {
@@ -4127,7 +4248,7 @@ public class MainActivity extends AppCompatActivity {
     /** If text is an "ACK xxxx" reply, marks the matching sent message and returns true. */
     private boolean handleAcknowledgment(String sender, String text) {
         // An acknowledgment from a station hiding its call sign is encrypted, with the call sign inside
-        String[] hidden = HiddenCall.unwrap(CryptoUtils.decrypt(text, password));
+        String[] hidden = HiddenCall.unwrap(decryptText(text));
         if (hidden != null) {
             sender = hidden[0];
             text = hidden[1];
@@ -4161,7 +4282,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         if (ackMode == ACK_ADDRESSED) {
             String text = received;
-            String decrypted = CryptoUtils.decrypt(received, password);
+            String decrypted = decryptText(received);
             if (decrypted != null)
                 text = decrypted;
             String[] hidden = HiddenCall.unwrap(text);
@@ -4249,7 +4370,13 @@ public class MainActivity extends AppCompatActivity {
         String finalMessage = message;
         boolean hidden = encrypt && message.length() > 0 && hidingCallSign();
         if (encrypt) {
-            String encrypted = CryptoUtils.encrypt(hidden ? HiddenCall.wrap(callSign.trim(), message) : message, password);
+            String inner = hidden ? HiddenCall.wrap(callSign.trim(), message) : message;
+            // The time stamp goes first, so receivers can check it before anything else
+            if (replayGuard.enabled)
+                inner = ReplayGuard.stamp(inner, System.currentTimeMillis());
+            String encrypted = CryptoUtils.encrypt(inner, password);
+            if (encrypted != null && replayGuard.enabled)
+                replayGuard.rememberSent(encrypted, System.currentTimeMillis());
             if (encrypted == null) {
                 Toast.makeText(this, R.string.encryption_failed, Toast.LENGTH_SHORT).show();
                 return;

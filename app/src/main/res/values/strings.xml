@@ -388,6 +388,23 @@ The resulting text message from the COFDMTV decoder is the only data that gets s
 	<string name="radio_permission_denied">Bluetooth permission denied</string>
 	<string name="radio_busy">The radio is still transmitting</string>
 	<string name="radio_disconnect_first">Disconnect the Bluetooth radio first</string>
+	<!-- Replay protection -->
+	<string name="replay_protection">Replay Protection</string>
+	<string name="replay_explanation">Someone who records one of your encrypted messages cannot read it, but could play the recording again later, for example to repeat an old \"come to the north gate\". With replay protection on, every encrypted message you send carries the time it was sent, hidden inside the encryption. Encrypted messages are then only accepted if they were sent recently, and each one only once.</string>
+	<string name="replay_enable">Reject old and replayed encrypted messages</string>
+	<string name="replay_window_title">Accept messages sent within:</string>
+	<string name="replay_window_choice">%1$s of this phone\'s clock</string>
+	<string name="replay_clock">This phone\'s clock: %1$s UTC</string>
+	<string name="replay_requirements">Turn it on for every station in the group: an encrypted message without a time is rejected, and Rattlegram++ before 1.5 shows a short ~T: code at the start of messages from a station using it. The phones\' clocks must agree to within the time chosen above (time zones do not matter); compare them using the clock shown here. A copy relayed by a repeater shortly after the original is dropped as a repeat. Pictures are not covered.</string>
+	<string name="replay_needs_password">Replay protection only applies to encrypted messages; set a password first (Danger Zone → Password)</string>
+	<string name="replay_no_stamp">Replay protection: no time in message from %1$s</string>
+	<string name="replay_too_old">Replay protection: %1$s, %2$d s too old</string>
+	<string name="replay_from_future">Replay protection: %1$s, %2$d s ahead of clock</string>
+	<string name="replay_replayed">Replay protection: repeat from %1$s</string>
+	<plurals name="replay_not_unlocked">
+		<item quantity="one">%d encrypted message was too old when it arrived and stays locked (replay protection)</item>
+		<item quantity="other">%d encrypted messages were too old when they arrived and stay locked (replay protection)</item>
+	</plurals>
 	<!-- Receive filters -->
 	<string name="receive_filters">Receive Filters</string>
 	<string name="filter_duplicates">Ignore repeated copies</string>
