@@ -388,4 +388,15 @@ The resulting text message from the COFDMTV decoder is the only data that gets s
 	<string name="radio_permission_denied">Bluetooth permission denied</string>
 	<string name="radio_busy">The radio is still transmitting</string>
 	<string name="radio_disconnect_first">Disconnect the Bluetooth radio first</string>
+	<!-- Background listening -->
+	<string name="background_listening">Background Listening</string>
+	<string name="background_listen">Keep listening with the screen off</string>
+	<string name="battery_settings">Battery settings…</string>
+	<string name="battery_settings_failed">Could not open the battery settings</string>
+	<string name="background_listening_prompt">The app keeps receiving with the screen off or another app in front, and still sends acknowledgments, repeats and beacons as set. A notification shows while it listens; tap Stop there to stop until you open the app again. Closing the app (swiping it away or Force Quit) stops it too.\n\nIt uses more battery. On some phones (Samsung included) set the app to Unrestricted in Battery settings… so Android does not stop it.\n\nWith App lock on, the lock also asks when you come back after more than a minute away.\n\nEnable this?</string>
+	<string name="background_channel">Background listening</string>
+	<string name="background_channel_description">Shown while the app keeps listening in the background</string>
+	<string name="background_notification_title">Listening in the background</string>
+	<string name="background_notification_text">Rattlegram++ is receiving. Tap to open.</string>
+	<string name="background_stop">Stop</string>
 </resources>

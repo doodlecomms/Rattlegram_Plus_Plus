@@ -148,6 +148,8 @@ public class MainActivity extends AppCompatActivity {
     /** How long the radio stays keyed after the last audio has played. */
     private static final long RIG_PTT_TAIL_MS = 100;
     private boolean activityResumed;
+    /** Optional background listening (Menu → Background Listening), and whether its Stop was tapped since. */
+    private boolean backgroundListening, backgroundStopped;
     // Encoder output at the radio's 32 kHz: symbol 5120 + guard 640 samples
     private static final int RADIO_EXTENDED_LENGTH = (1280 * RadioLink.SAMPLE_RATE / 8000) * 9 / 8;
     private final int audioFormat = AudioFormat.ENCODING_PCM_16BIT;
@@ -166,6 +168,13 @@ public class MainActivity extends AppCompatActivity {
     private boolean deleteMessagesOnClose;
     /** Covers the screen until the phone's own lock (fingerprint, face or PIN) confirms the user. */
     private View lockCover;
+    /** Phone-lock prompt open (it may show the PIN screen as another activity). */
+    private boolean authenticating;
+    /** The cover was put up because the app went to the background while listening there. */
+    private boolean coverFromStop;
+    private long stoppedAt;
+    /** With background listening, the lock asks again after the app was away this long. */
+    private static final long LOCK_GRACE_MS = 60_000;
     private static final int LOCK_AUTHENTICATORS =
             BiometricManager.Authenticators.BIOMETRIC_WEAK | BiometricManager.Authenticators.DEVICE_CREDENTIAL;
     private boolean hideCallSign;
@@ -458,6 +467,67 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private boolean isBackgroundListeningEnabled() {
+        return backgroundListening;
+    }
+
+    /** Whether received audio (microphone or Bluetooth radio) is to be decoded right now. */
+    private boolean shouldListen() {
+        return activityResumed || backgroundListening && !backgroundStopped;
+    }
+
+    private void setBackgroundListening(boolean on) {
+        backgroundListening = on;
+        getPreferences(Context.MODE_PRIVATE).edit().putBoolean("backgroundListening", on).apply();
+    }
+
+    private boolean audioPermitted() {
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void toggleBackgroundListening() {
+        if (isBackgroundListeningEnabled()) {
+            setBackgroundListening(false);
+            ListenService.stop(this);
+            invalidateOptionsMenu();
+            return;
+        }
+        if (!audioPermitted()) {
+            Toast.makeText(this, R.string.audio_permission_denied, Toast.LENGTH_LONG).show();
+            invalidateOptionsMenu();
+            return;
+        }
+        new AlertDialog.Builder(this, R.style.Theme_AlertDialog)
+                .setTitle(R.string.background_listening)
+                .setMessage(R.string.background_listening_prompt)
+                .setPositiveButton(R.string.enable, (dialog, which) -> {
+                    setBackgroundListening(true);
+                    backgroundStopped = false;
+                    ListenService.start(this);
+                    invalidateOptionsMenu();
+                })
+                .setNegativeButton(R.string.cancel, (dialog, which) -> invalidateOptionsMenu())
+                .show();
+    }
+
+    /** Android's list of battery optimisations, where the app can be set to Unrestricted. */
+    private void openBatterySettings() {
+        Intent intent = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                ? new Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                : new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        android.net.Uri.fromParts("package", getPackageName(), null));
+        try {
+            startActivity(intent);
+        } catch (android.content.ActivityNotFoundException e) {
+            try {
+                startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        android.net.Uri.fromParts("package", getPackageName(), null)));
+            } catch (android.content.ActivityNotFoundException ignored) {
+                Toast.makeText(this, R.string.battery_settings_failed, Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
     private void setStatus(String str, boolean tmp) {
         if (statusTimer != null)
             handler.removeCallbacks(statusTimer);
@@ -706,6 +776,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startListening() {
+        // Not on screen and not listening in the background (or its Stop was tapped): stay off
+        if (!shouldListen())
+            return;
         // Between the parts of a picture being sent the phone stays in transmit mode
         if (pictureQueue != null)
             return;
@@ -1075,6 +1148,13 @@ public class MainActivity extends AppCompatActivity {
                 showTuneDialog(null);
         });
         handler = new Handler(getMainLooper());
+        // "Stop" in the background-listening notification: stop listening until the app is opened again
+        backgroundListening = getPreferences(Context.MODE_PRIVATE).getBoolean("backgroundListening", false);
+        ListenService.onStopRequested = () -> {
+            backgroundStopped = true;
+            if (!activityResumed)
+                stopListening();
+        };
         radioLink = new RadioLink(radioListener);
         // Optional remembered password (encrypted with an Android Keystore key)
         String rememberedPassword = PasswordStore.load(this);
@@ -1686,6 +1766,7 @@ public class MainActivity extends AppCompatActivity {
         updateRepeaterModeMenu();
         updateDeleteMessagesOnCloseMenu();
         menu.findItem(R.id.action_radio_mute_speaker).setChecked(isRadioMuteEnabled());
+        menu.findItem(R.id.action_background_listening).setChecked(isBackgroundListeningEnabled());
         updateAckMenu();
         return true;
     }
@@ -1791,6 +1872,15 @@ public class MainActivity extends AppCompatActivity {
 
         if (id == R.id.action_contacts) {
             showContactsDialog();
+            return true;
+        }
+
+        if (id == R.id.action_background_listening) {
+            toggleBackgroundListening();
+            return true;
+        }
+        if (id == R.id.action_battery_settings) {
+            openBatterySettings();
             return true;
         }
 
@@ -2130,6 +2220,7 @@ public class MainActivity extends AppCompatActivity {
         sentMessagesById.clear();
         incomingPictures.clear();
         PasswordStore.destroy(this);
+        ListenService.stop(this);
         getPreferences(Context.MODE_PRIVATE).edit().clear().commit();
         deleteRecursively(getFilesDir());
         deleteRecursively(getCacheDir());
@@ -2179,11 +2270,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void askPhoneLock(Runnable onSuccess) {
+        authenticating = true;
         BiometricPrompt prompt = new BiometricPrompt(this, ContextCompat.getMainExecutor(this),
                 new BiometricPrompt.AuthenticationCallback() {
                     @Override
                     public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
+                        authenticating = false;
                         onSuccess.run();
+                    }
+
+                    @Override
+                    public void onAuthenticationError(int errorCode, @NonNull CharSequence errString) {
+                        authenticating = false;
                     }
                 });
         prompt.authenticate(new BiometricPrompt.PromptInfo.Builder()
@@ -2193,8 +2291,12 @@ public class MainActivity extends AppCompatActivity {
                 .build());
     }
 
-    /** Hides everything behind a cover with an Unlock button and asks for the phone's lock. */
     private void lockApp() {
+        lockApp(true);
+    }
+
+    /** Hides everything behind a cover with an Unlock button and, if askNow, asks for the phone's lock. */
+    private void lockApp(boolean askNow) {
         if (!canUsePhoneLock()) {
             // Never lock someone out: without a screen lock there is nothing to unlock with
             Toast.makeText(this, R.string.app_lock_no_screen_lock, Toast.LENGTH_LONG).show();
@@ -2221,7 +2323,8 @@ public class MainActivity extends AppCompatActivity {
         if (getSupportActionBar() != null)
             getSupportActionBar().hide();
         // Ask once the screen is up, not in the middle of starting the app
-        cover.post(() -> askPhoneLock(this::unlockApp));
+        if (askNow)
+            cover.post(() -> askPhoneLock(this::unlockApp));
     }
 
     private void unlockApp() {
@@ -2238,6 +2341,7 @@ public class MainActivity extends AppCompatActivity {
         builder.setTitle(R.string.force_quit)
                 .setMessage(R.string.force_quit_prompt)
                 .setPositiveButton(R.string.quit, (dialog, which) -> {
+                    ListenService.stop(this);
                     storeSettings();
                     if (deleteMessagesOnClose)
                         clearStoredMessages();
@@ -2560,7 +2664,7 @@ public class MainActivity extends AppCompatActivity {
     private final RadioLink.Listener radioListener = new RadioLink.Listener() {
         @Override
         public void onRadioAudio(short[] pcm, int count) {
-            if (activityResumed && isRadioConnected() && !radioLink.isTransmitting())
+            if (shouldListen() && isRadioConnected() && !radioLink.isTransmitting())
                 decodeAudio(pcm, count, 0);
         }
 
@@ -2591,7 +2695,7 @@ public class MainActivity extends AppCompatActivity {
             else
                 message = getString(R.string.radio_disconnected, name);
             Toast.makeText(MainActivity.this, message, Toast.LENGTH_LONG).show();
-            if (activityResumed)
+            if (shouldListen())
                 startListening();
         }
 
@@ -4374,7 +4478,18 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         activityResumed = true;
+        if (coverFromStop) {
+            coverFromStop = false;
+            if (android.os.SystemClock.elapsedRealtime() - stoppedAt < LOCK_GRACE_MS)
+                unlockApp();
+            else if (lockCover != null)
+                lockCover.post(() -> askPhoneLock(this::unlockApp));
+        }
+        backgroundStopped = false;
         startListening();
+        // Android only lets microphone access in the background start while the app is on screen
+        if (isBackgroundListeningEnabled() && audioPermitted())
+            ListenService.start(this);
         if (rig != null)
             rig.setPolling(rig.isConnected());
         super.onResume();
@@ -4383,7 +4498,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         activityResumed = false;
-        stopListening();
+        if (!isBackgroundListeningEnabled())
+            stopListening();
         storeSettings();
         if (rig != null)
             rig.setPolling(false);
@@ -4391,7 +4507,21 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onStop() {
+        // The app now stays alive in the background for as long as it listens there, so the app lock
+        // (otherwise only asked on a fresh open) covers it now and asks again after a longer absence
+        if (isBackgroundListeningEnabled() && isAppLockEnabled() && lockCover == null && !authenticating && !wiping) {
+            lockApp(false);
+            coverFromStop = true;
+            stoppedAt = android.os.SystemClock.elapsedRealtime();
+        }
+        super.onStop();
+    }
+
+    @Override
     protected void onDestroy() {
+        ListenService.onStopRequested = null;
+        ListenService.stop(this);
         // isFinishing() is false for a screen rotation, so only a real close wipes the messages
         if (isFinishing() && deleteMessagesOnClose)
             clearStoredMessages();
