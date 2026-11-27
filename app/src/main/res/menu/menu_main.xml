@@ -184,6 +184,7 @@
             <item android:id="@+id/action_enable_ultrasonic" android:title="@string/enable_ultrasonic" />
             <item android:id="@+id/action_force_quit" android:title="@string/force_quit" />
             <item android:id="@+id/action_password" android:title="@string/password" />
+            <item android:id="@+id/action_replay_protection" android:title="@string/replay_protection" />
         </menu>
     </item>
 
