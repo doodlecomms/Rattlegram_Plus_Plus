@@ -429,4 +429,13 @@ The resulting text message from the COFDMTV decoder is the only data that gets s
 	<string name="background_notification_title">Listening in the background</string>
 	<string name="background_notification_text">Rattlegram++ is receiving. Tap to open.</string>
 	<string name="background_stop">Stop</string>
+	<!-- Input level meter -->
+	<string name="show_input_level">Show Input Level</string>
+	<string name="input_level">Input level</string>
+	<string name="level_format">%1$d dB · %2$s</string>
+	<string name="level_silent">Nothing coming in</string>
+	<string name="level_low">Low</string>
+	<string name="level_good">Good</string>
+	<string name="level_loud">Loud</string>
+	<string name="level_clipping">Too loud (clipping)</string>
 </resources>

@@ -153,6 +153,13 @@ public class MainActivity extends AppCompatActivity {
     private boolean activityResumed;
     /** Optional background listening (Menu → Background Listening), and whether its Stop was tapped since. */
     private boolean backgroundListening, backgroundStopped;
+    /** Optional input level meter (Decoder Settings → Show Input Level). */
+    private final LevelMeter levelMeter = new LevelMeter();
+    private boolean showLevel;
+    private int levelChunks;
+    private View levelRow;
+    private android.widget.ProgressBar levelBar;
+    private TextView levelText;
     // Encoder output at the radio's 32 kHz: symbol 5120 + guard 640 samples
     private static final int RADIO_EXTENDED_LENGTH = (1280 * RadioLink.SAMPLE_RATE / 8000) * 9 / 8;
     private final int audioFormat = AudioFormat.ENCODING_PCM_16BIT;
@@ -395,6 +402,8 @@ public class MainActivity extends AppCompatActivity {
 
     /** Feeds one chunk of received audio (microphone or Bluetooth radio) to the decoder and handles the result. */
     private void decodeAudio(short[] buffer, int count, int channel) {
+        if (showLevel)
+            updateLevel(buffer, count, channel);
         if (!feedDecoder(buffer, count, channel))
             return;
         int status = processDecoder();
@@ -662,6 +671,41 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, R.string.battery_settings_failed, Toast.LENGTH_SHORT).show();
             }
         }
+    }
+
+    /** Feeds a chunk of received audio to the level meter and redraws it about five times a second. */
+    private void updateLevel(short[] buffer, int count, int channel) {
+        // The decoder's channel setting: 0 is mono, anything else reads interleaved stereo
+        int samples = channel == 0 ? count : 2 * count;
+        int rate = isRadioConnected() ? RadioLink.SAMPLE_RATE : recordRate;
+        levelMeter.add(buffer, samples, (double) count / rate);
+        if (++levelChunks % 10 != 0)
+            return;
+        int color, label;
+        switch (levelMeter.zone()) {
+            case CLIPPING: color = R.color.level_clipping; label = R.string.level_clipping; break;
+            case LOUD: color = R.color.level_loud; label = R.string.level_loud; break;
+            case GOOD: color = R.color.level_good; label = R.string.level_good; break;
+            case LOW: color = R.color.level_low; label = R.string.level_low; break;
+            default: color = R.color.level_silent; label = R.string.level_silent; break;
+        }
+        int c = ContextCompat.getColor(this, color);
+        levelBar.setProgress((int) Math.round(levelMeter.fill() * levelBar.getMax()));
+        levelBar.setProgressTintList(android.content.res.ColorStateList.valueOf(c));
+        levelText.setTextColor(c);
+        levelText.setText(getString(R.string.level_format, (int) Math.round(levelMeter.levelDb()), getString(label)));
+    }
+
+    private void setShowLevel(boolean show) {
+        showLevel = show;
+        getPreferences(Context.MODE_PRIVATE).edit().putBoolean("showInputLevel", show).apply();
+        levelMeter.reset();
+        levelChunks = 0;
+        levelBar.setProgress(0);
+        levelText.setText("");
+        levelRow.setVisibility(show ? View.VISIBLE : View.GONE);
+        if (menu != null)
+            menu.findItem(R.id.action_show_level).setChecked(show);
     }
 
     private void setStatus(String str, boolean tmp) {
@@ -1294,6 +1338,11 @@ public class MainActivity extends AppCompatActivity {
         EdgeToEdge.enable(this);
         ActivityMainBinding binding = ActivityMainBinding.inflate(getLayoutInflater());
         status = binding.status;
+        levelRow = binding.levelRow;
+        levelBar = binding.levelBar;
+        levelText = binding.levelText;
+        showLevel = getPreferences(Context.MODE_PRIVATE).getBoolean("showInputLevel", false);
+        levelRow.setVisibility(showLevel ? View.VISIBLE : View.GONE);
         // Only does anything while a Hamlib radio is connected: tap the frequency to tune
         status.setOnClickListener(v -> {
             if (rig != null && rig.isConnected())
@@ -1921,6 +1970,7 @@ public class MainActivity extends AppCompatActivity {
         menu.findItem(R.id.action_radio_mute_speaker).setChecked(isRadioMuteEnabled());
         menu.findItem(R.id.action_notify_messages).setChecked(isNotifyEnabled());
         menu.findItem(R.id.action_background_listening).setChecked(isBackgroundListeningEnabled());
+        menu.findItem(R.id.action_show_level).setChecked(showLevel);
         updateAckMenu();
         return true;
     }
@@ -2168,6 +2218,10 @@ public class MainActivity extends AppCompatActivity {
         }
         if (id == R.id.action_show_spectrum) {
             spectrumAnalyzer();
+            return true;
+        }
+        if (id == R.id.action_show_level) {
+            setShowLevel(!showLevel);
             return true;
         }
         if (id == R.id.action_edit_call_sign) {

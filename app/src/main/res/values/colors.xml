@@ -7,4 +7,10 @@
     <color name="white">#FFFFFFFF</color>
     <color name="tint">#FF000000</color>
     <color name="beacon_green">#00E676</color>   <!-- Green shown while the beacon is on -->
+    <!-- Input level meter zones -->
+    <color name="level_silent">#FF9E9E9E</color>
+    <color name="level_low">#FFFFB300</color>
+    <color name="level_good">#FF43A047</color>
+    <color name="level_loud">#FFFB8C00</color>
+    <color name="level_clipping">#FFE53935</color>
 </resources>
