@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <EditText
+            android:id="@+id/quick_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/quick_label_hint"
+            android:inputType="textCapSentences"
+            android:maxLength="24"
+            android:singleLine="true" />
+
+        <EditText
+            android:id="@+id/quick_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:hint="@string/quick_text_hint"
+            android:inputType="textMultiLine|textCapSentences"
+            android:minLines="2" />
+
+        <TextView
+            android:id="@+id/quick_capacity"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="12sp" />
+
+        <CheckBox
+            android:id="@+id/quick_location"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/quick_add_location" />
+
+        <CheckBox
+            android:id="@+id/quick_encrypt"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/encrypt_message" />
+
+        <CheckBox
+            android:id="@+id/quick_confirm"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/quick_confirm" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/quick_send" />
+
+            <EditText
+                android:id="@+id/quick_repeats"
+                android:layout_width="56dp"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:inputType="number"
+                android:maxLength="1"
+                android:selectAllOnFocus="true" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/quick_times_every" />
+
+            <EditText
+                android:id="@+id/quick_gap"
+                android:layout_width="72dp"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:inputType="number"
+                android:maxLength="3"
+                android:selectAllOnFocus="true" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/quick_seconds" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/quick_repeat_hint"
+            android:textColor="@color/tint"
+            android:textSize="12sp" />
+    </LinearLayout>
+</ScrollView>

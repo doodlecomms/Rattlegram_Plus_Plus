@@ -70,6 +70,18 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:textColor="?attr/colorControlNormal" />
 
+        <!-- Quick messages button (⚡): tap a saved message to send it -->
+        <TextView
+            android:id="@+id/quick_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:padding="8dp"
+            android:text="⚡"
+            android:textSize="24sp"
+            android:contentDescription="@string/quick_messages"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:textColor="?attr/colorControlNormal" />
+
         <!-- Status text (centered) -->
         <TextView
             android:id="@+id/status"

@@ -1460,6 +1460,8 @@ public class MainActivity extends AppCompatActivity {
 
         composeButton = findViewById(R.id.compose_button);
         composeButton.setOnClickListener(v -> composeMessage(null));
+
+        findViewById(R.id.quick_button).setOnClickListener(v -> showQuickMessages());
     }
 
     private void handleInsets() {
@@ -1624,18 +1626,28 @@ public class MainActivity extends AppCompatActivity {
      * Send location message: prefer a fresh last known location, otherwise actively request one.
      */
     private void sendLocationMessage() {
+        fetchLocation(loc -> {
+            if (loc != null)
+                sendLocation(loc);
+        });
+    }
+
+    /** Gets a fresh location (or the last known one) and passes it on; null, after saying why, if there is none. */
+    private void fetchLocation(LocationCallback callback) {
         if (!hasLocationPermission()) {
             Toast.makeText(this, R.string.location_permission_denied, Toast.LENGTH_SHORT).show();
+            callback.onLocation(null);
             return;
         }
         if (!isLocationServiceEnabled()) {
             Toast.makeText(this, R.string.location_service_disabled, Toast.LENGTH_SHORT).show();
+            callback.onLocation(null);
             return;
         }
 
         final Location last = getLastKnownLocation();
         if (isLocationFresh(last)) {
-            sendLocation(last);
+            callback.onLocation(last);
             return;
         }
 
@@ -1643,14 +1655,269 @@ public class MainActivity extends AppCompatActivity {
         setStatus(getString(R.string.location_fetching), true);
         requestCurrentLocation(loc -> {
             if (loc != null) {
-                sendLocation(loc);
+                callback.onLocation(loc);
             } else if (last != null) {
                 // Active request failed; fall back to the old location
-                sendLocation(last);
+                callback.onLocation(last);
             } else {
                 Toast.makeText(this, R.string.location_failed, Toast.LENGTH_SHORT).show();
+                callback.onLocation(null);
             }
         });
+    }
+
+    // ---------------- Quick messages (the ⚡ button) ----------------
+
+    private List<QuickMessage> quickMessages;
+    /** The next repeat (or a retry while the radio is busy) of the quick message being sent; null when none. */
+    private Runnable quickRepeat;
+
+    private List<QuickMessage> quickMessages() {
+        if (quickMessages == null)
+            quickMessages = QuickMessage.fromJson(getPreferences(Context.MODE_PRIVATE).getString("quickMessages", null));
+        return quickMessages;
+    }
+
+    private void saveQuickMessages() {
+        getPreferences(Context.MODE_PRIVATE).edit().putString("quickMessages", QuickMessage.toJson(quickMessages())).apply();
+    }
+
+    /** One line saying what a quick message sends: its text, then 📍 for a location, 🔒 when encrypted, ×n for repeats. */
+    private static String quickSummary(QuickMessage q) {
+        StringBuilder sb = new StringBuilder(q.text.trim().replace('\n', ' '));
+        if (q.addLocation)
+            sb.append(sb.length() > 0 ? " + 📍" : "📍");
+        if (q.encrypt)
+            sb.append(" 🔒");
+        if (q.repeats > 1)
+            sb.append(" ×").append(q.repeats);
+        return sb.toString();
+    }
+
+    private void showQuickMessages() {
+        View view = getLayoutInflater().inflate(R.layout.quick_messages, null);
+        ListView list = view.findViewById(R.id.quick_list);
+        List<QuickMessage> items = quickMessages();
+        view.findViewById(R.id.quick_empty).setVisibility(items.isEmpty() ? View.VISIBLE : View.GONE);
+        view.findViewById(R.id.quick_hint).setVisibility(items.isEmpty() ? View.GONE : View.VISIBLE);
+        list.setAdapter(new ArrayAdapter<QuickMessage>(this, 0, items) {
+            @NonNull
+            @Override
+            public View getView(int position, View convertView, @NonNull ViewGroup parent) {
+                View v = convertView != null ? convertView
+                        : getLayoutInflater().inflate(android.R.layout.simple_list_item_2, parent, false);
+                QuickMessage q = getItem(position);
+                ((TextView) v.findViewById(android.R.id.text1)).setText(q.title());
+                ((TextView) v.findViewById(android.R.id.text2)).setText(quickSummary(q));
+                return v;
+            }
+        });
+        AlertDialog.Builder builder = new AlertDialog.Builder(this, R.style.Theme_AlertDialog)
+                .setTitle(R.string.quick_messages)
+                .setView(view)
+                .setNeutralButton(R.string.quick_add, (d, w) -> editQuickMessage(-1))
+                .setNegativeButton(R.string.close, null);
+        if (quickRepeat != null)
+            builder.setPositiveButton(R.string.quick_stop_repeats, (d, w) -> stopQuickRepeats(true));
+        AlertDialog dialog = builder.show();
+        list.setOnItemClickListener((parent, v, i, id) -> {
+            dialog.dismiss();
+            sendQuickMessage(items.get(i));
+        });
+        list.setOnItemLongClickListener((parent, v, i, id) -> {
+            dialog.dismiss();
+            editQuickMessage(i);
+            return true;
+        });
+    }
+
+    /** Edits the quick message at index, or makes a new one for index -1. Saving returns to the list. */
+    private void editQuickMessage(int index) {
+        boolean isNew = index < 0;
+        QuickMessage q = isNew ? new QuickMessage() : quickMessages().get(index).copy();
+        if (isNew)
+            q.encrypt = password != null && !password.isEmpty() && encryptMessage;
+        View view = getLayoutInflater().inflate(R.layout.quick_message_edit, null);
+        EditText label = view.findViewById(R.id.quick_label);
+        EditText text = view.findViewById(R.id.quick_text);
+        TextView capacity = view.findViewById(R.id.quick_capacity);
+        CheckBox location = view.findViewById(R.id.quick_location);
+        CheckBox encrypt = view.findViewById(R.id.quick_encrypt);
+        CheckBox confirm = view.findViewById(R.id.quick_confirm);
+        EditText repeats = view.findViewById(R.id.quick_repeats);
+        EditText gap = view.findViewById(R.id.quick_gap);
+        label.setText(q.label);
+        text.setText(q.text);
+        location.setChecked(q.addLocation);
+        encrypt.setChecked(q.encrypt);
+        confirm.setChecked(q.confirm);
+        repeats.setText(String.valueOf(q.repeats));
+        gap.setText(String.valueOf(q.gapSeconds));
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this, R.style.Theme_AlertDialog)
+                .setTitle(isNew ? R.string.quick_new : R.string.quick_edit)
+                .setView(view)
+                .setPositiveButton(R.string.quick_save, (d, w) -> {
+                    q.label = label.getText().toString().trim();
+                    q.text = text.getText().toString();
+                    q.addLocation = location.isChecked();
+                    q.encrypt = encrypt.isChecked();
+                    q.confirm = confirm.isChecked();
+                    q.repeats = parseIntOr(repeats.getText().toString(), 1);
+                    q.gapSeconds = parseIntOr(gap.getText().toString(), QuickMessage.DEFAULT_GAP_SECONDS);
+                    q.clamp();
+                    if (isNew)
+                        quickMessages().add(q);
+                    else
+                        quickMessages().set(index, q);
+                    saveQuickMessages();
+                    showQuickMessages();
+                })
+                .setNegativeButton(R.string.cancel, (d, w) -> showQuickMessages());
+        if (!isNew)
+            builder.setNeutralButton(R.string.delete, (d, w) -> confirmDeleteQuickMessage(index));
+        AlertDialog dialog = builder.show();
+
+        Runnable update = () -> {
+            q.text = text.getText().toString();
+            q.addLocation = location.isChecked();
+            int limit = encrypt.isChecked() ? 99 - hiddenCallOverhead() : 170;
+            int bytes = q.bytes();
+            boolean fits = bytes <= limit;
+            if (!fits) {
+                capacity.setText(getString(R.string.quick_too_long, bytes - limit));
+                capacity.setTextColor(Color.RED);
+            } else if (!q.hasContent()) {
+                capacity.setText(R.string.quick_needs_content);
+                capacity.setTextColor(ContextCompat.getColor(this, R.color.tint));
+            } else {
+                capacity.setText(getString(q.addLocation ? R.string.quick_bytes_location : R.string.quick_bytes, bytes, limit));
+                capacity.setTextColor(ContextCompat.getColor(this, R.color.tint));
+            }
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(fits && q.hasContent());
+        };
+        text.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                update.run();
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {}
+        });
+        location.setOnCheckedChangeListener((b, c) -> update.run());
+        encrypt.setOnCheckedChangeListener((b, c) -> update.run());
+        update.run();
+    }
+
+    private void confirmDeleteQuickMessage(int index) {
+        QuickMessage q = quickMessages().get(index);
+        new AlertDialog.Builder(this, R.style.Theme_AlertDialog)
+                .setTitle(R.string.quick_messages)
+                .setMessage(getString(R.string.quick_delete_prompt, q.title()))
+                .setPositiveButton(R.string.delete, (d, w) -> {
+                    quickMessages().remove(index);
+                    saveQuickMessages();
+                    showQuickMessages();
+                })
+                .setNegativeButton(R.string.cancel, (d, w) -> editQuickMessage(index))
+                .show();
+    }
+
+    private static int parseIntOr(String s, int fallback) {
+        try {
+            return Integer.parseInt(s.trim());
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    /** Sends a quick message, asking first if it is set to. */
+    private void sendQuickMessage(QuickMessage q) {
+        if (!q.confirm) {
+            startQuickMessage(q.copy());
+            return;
+        }
+        StringBuilder detail = new StringBuilder(q.text.trim());
+        if (q.addLocation)
+            detail.append(detail.length() > 0 ? "\n\n" : "").append(getString(R.string.quick_send_detail_location));
+        if (q.encrypt)
+            detail.append(detail.length() > 0 ? "\n" : "").append(getString(R.string.quick_send_detail_encrypted));
+        if (q.repeats > 1)
+            detail.append(detail.length() > 0 ? "\n" : "").append(getString(R.string.quick_send_detail_repeats, q.repeats, q.gapSeconds));
+        new AlertDialog.Builder(this, R.style.Theme_AlertDialog)
+                .setTitle(getString(R.string.quick_send_prompt, q.title()))
+                .setMessage(detail.toString())
+                .setPositiveButton(R.string.transmit, (d, w) -> startQuickMessage(q.copy()))
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
+    private void startQuickMessage(QuickMessage q) {
+        if (q.encrypt && (password == null || password.isEmpty())) {
+            Toast.makeText(this, R.string.encryption_disabled_no_password, Toast.LENGTH_LONG).show();
+            return;
+        }
+        // A new quick message replaces the repeats of an earlier one
+        stopQuickRepeats(false);
+        if (!q.addLocation) {
+            sendQuickRepeat(q.compose(null), q, 1);
+            return;
+        }
+        fetchLocation(loc -> {
+            if (loc == null) {
+                // fetchLocation said why; a message with text still goes out, without the location
+                if (q.text.trim().isEmpty())
+                    return;
+                Toast.makeText(this, R.string.quick_no_location, Toast.LENGTH_LONG).show();
+                sendQuickRepeat(q.compose(null), q, 1);
+                return;
+            }
+            // The same location for every repeat
+            String where = String.format(Locale.US, LOCATION_FORMAT, loc.getLatitude(), loc.getLongitude());
+            sendQuickRepeat(q.compose(where), q, 1);
+        });
+    }
+
+    /** Transmits copy number n of a quick message and schedules the next one. */
+    private void sendQuickRepeat(String text, QuickMessage q, int n) {
+        quickRepeat = null;
+        sendWhenFree(text, q.encrypt, 8, () -> {
+            if (n >= q.repeats)
+                return;
+            quickRepeat = () -> sendQuickRepeat(text, q, n + 1);
+            handler.postDelayed(quickRepeat, q.gapSeconds * 1000L);
+            setStatus(getString(R.string.quick_repeat_pending, q.gapSeconds, n + 1, q.repeats), true);
+        });
+    }
+
+    /** Transmits as soon as nothing else is being sent (an acknowledgment, a picture), then runs after. */
+    private void sendWhenFree(String text, boolean encrypt, int attempts, Runnable after) {
+        if (isTransmitBusy() || pictureQueue != null) {
+            if (attempts > 1) {
+                quickRepeat = () -> sendWhenFree(text, encrypt, attempts - 1, after);
+                handler.postDelayed(quickRepeat, 1500);
+            } else {
+                quickRepeat = null;
+                Toast.makeText(this, R.string.quick_busy, Toast.LENGTH_SHORT).show();
+            }
+            return;
+        }
+        quickRepeat = null;
+        transmitMessage(text, encrypt);
+        after.run();
+    }
+
+    private void stopQuickRepeats(boolean announce) {
+        if (quickRepeat == null)
+            return;
+        handler.removeCallbacks(quickRepeat);
+        quickRepeat = null;
+        if (announce)
+            Toast.makeText(this, R.string.quick_repeats_stopped, Toast.LENGTH_SHORT).show();
     }
 
     /**

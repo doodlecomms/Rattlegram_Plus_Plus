@@ -101,4 +101,5 @@ dependencies {
     implementation 'com.journeyapps:zxing-android-embedded:4.3.0' // Password QR code: show and scan (Apache-2.0, includes ZXing core)
     implementation 'com.github.mik3y:usb-serial-for-android:3.11.0' // Optional Hamlib rig control: USB serial (CAT) adapters (MIT)
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303' // org.json for unit tests (Android's copy is only a stub there)
 }
