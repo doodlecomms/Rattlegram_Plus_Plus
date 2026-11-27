@@ -388,6 +388,36 @@ The resulting text message from the COFDMTV decoder is the only data that gets s
 	<string name="radio_permission_denied">Bluetooth permission denied</string>
 	<string name="radio_busy">The radio is still transmitting</string>
 	<string name="radio_disconnect_first">Disconnect the Bluetooth radio first</string>
+	<!-- Quick messages -->
+	<string name="quick_messages">Quick Messages</string>
+	<string name="quick_hint">Tap to send. Hold to edit or delete.</string>
+	<string name="quick_empty">No quick messages. Tap Add to make one.</string>
+	<string name="quick_add">Add</string>
+	<string name="quick_new">New Quick Message</string>
+	<string name="quick_edit">Edit Quick Message</string>
+	<string name="quick_save">Save</string>
+	<string name="quick_label_hint">Button name (optional)</string>
+	<string name="quick_text_hint">Message text</string>
+	<string name="quick_add_location">Add my location</string>
+	<string name="quick_confirm">Ask before sending</string>
+	<string name="quick_send">Send</string>
+	<string name="quick_times_every">times, every</string>
+	<string name="quick_seconds">seconds</string>
+	<string name="quick_repeat_hint">Up to 5 times, 5 to 600 seconds apart. Each one goes out as its own message. Leave room between them for the transmission itself and for replies.</string>
+	<string name="quick_bytes">%1$d of %2$d bytes</string>
+	<string name="quick_bytes_location">%1$d of %2$d bytes, with room for the location</string>
+	<string name="quick_too_long">%1$d bytes too long</string>
+	<string name="quick_needs_content">Type a message or tick Add my location</string>
+	<string name="quick_delete_prompt">Delete the quick message “%1$s”?</string>
+	<string name="quick_send_prompt">Send “%1$s”?</string>
+	<string name="quick_send_detail_location">Your current location is added.</string>
+	<string name="quick_send_detail_encrypted">Sent encrypted.</string>
+	<string name="quick_send_detail_repeats">Sent %1$d times, %2$d seconds apart.</string>
+	<string name="quick_no_location">Could not get your location, so the message went without it</string>
+	<string name="quick_repeat_pending">Sending again in %1$d s (%2$d of %3$d)</string>
+	<string name="quick_stop_repeats">Stop repeating</string>
+	<string name="quick_repeats_stopped">Repeats stopped</string>
+	<string name="quick_busy">Still transmitting; try again in a moment</string>
 	<!-- Receive filters -->
 	<string name="receive_filters">Receive Filters</string>
 	<string name="filter_duplicates">Ignore repeated copies</string>
