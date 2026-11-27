@@ -132,6 +132,8 @@ public class MainActivity extends AppCompatActivity {
     private final int permissionID = 1;
     private final int locationPermissionID = 100;
     private final int bluetoothPermissionID = 200;
+    private final int notificationPermissionID = 300;
+    private MessageNotifier notifier;
     // Bluetooth radio (BTech UV-Pro / Vero VR-N76) audio link
     private RadioLink radioLink;
     // Optional Hamlib rig control (CAT frequency and PTT). Off by default: nothing Hamlib is loaded or opened
@@ -464,10 +466,10 @@ public class MainActivity extends AppCompatActivity {
                                 break;
                             if (hidden != null) {
                                 autoSaveContact(hidden[0]);
-                                addMessage(hidden[0], getString(R.string.received_hidden), hidden[1]);
+                                notifyReceived(hidden[0], addMessage(hidden[0], getString(R.string.received_hidden), hidden[1]));
                             } else {
                                 autoSaveContact(sender);
-                                addMessage(sender, getString(R.string.received), received);
+                                notifyReceived(sender, addMessage(sender, getString(R.string.received), received));
                             }
                             maybeAcknowledge(received);
                         }
@@ -549,6 +551,47 @@ public class MainActivity extends AppCompatActivity {
                 })
                 .setNegativeButton(R.string.cancel, null)
                 .show();
+    }
+
+    private boolean isNotifyEnabled() {
+        return getPreferences(Context.MODE_PRIVATE).getBoolean("notifyMessages", false);
+    }
+
+    /** Turns new-message notifications on or off; turning them on asks Android 13+ for permission first. */
+    private void setNotifyEnabled(boolean enable) {
+        if (enable && !notifier.allowed() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, notificationPermissionID);
+            return;
+        }
+        if (enable && !notifier.allowed()) {
+            // Permission granted, but notifications are switched off for the app in Android's settings
+            Toast.makeText(this, R.string.notify_blocked, Toast.LENGTH_LONG).show();
+            try {
+                startActivity(notifier.channelSettings());
+            } catch (android.content.ActivityNotFoundException ignored) {
+            }
+        }
+        getPreferences(Context.MODE_PRIVATE).edit().putBoolean("notifyMessages", enable).apply();
+        if (!enable)
+            notifier.cancelAll();
+        if (menu != null)
+            menu.findItem(R.id.action_notify_messages).setChecked(enable);
+    }
+
+    /** Posts a notification for a received list entry while the app is not on screen, if turned on. */
+    private void notifyReceived(String call, String entry) {
+        if (activityResumed || wiping || entry == null || !isNotifyEnabled())
+            return;
+        int nl = entry.indexOf('\n');
+        String body = nl < 0 ? "" : entry.substring(nl + 1).trim();
+        boolean receivedPlain = entry.substring(0, Math.max(0, nl)).endsWith(" - " + getString(R.string.received) + ":");
+        // An encrypted message we have no (right) password for: never put the ciphertext in the shade
+        if (receivedPlain && body.matches("[A-Za-z0-9+/]{36,}={0,2}"))
+            body = getString(R.string.notify_locked);
+        else if (pictureNameIn(body) != null)
+            body = getString(R.string.notify_picture);
+        notifier.notifyMessage(call, body, isAppLockEnabled());
     }
 
     private void setStatus(String str, boolean tmp) {
@@ -911,6 +954,18 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
+        if (requestCode == notificationPermissionID) {
+            boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            if (granted) {
+                setNotifyEnabled(true);
+            } else {
+                Toast.makeText(this, R.string.notify_permission_denied, Toast.LENGTH_LONG).show();
+                if (menu != null)
+                    menu.findItem(R.id.action_notify_messages).setChecked(false);
+            }
+            return;
+        }
+
         if (requestCode == bluetoothPermissionID) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED)
                 showRadioDialog();
@@ -1091,6 +1146,8 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle state) {
+        notifier = new MessageNotifier(this);
+        notifier.createChannel();
         messages = new MessageAdapter(this, R.layout.message_list_item);
         final int defaultSampleRate = 8000;
         final int defaultChannelSelect = 0;
@@ -1782,6 +1839,7 @@ public class MainActivity extends AppCompatActivity {
         updateRepeaterModeMenu();
         updateDeleteMessagesOnCloseMenu();
         menu.findItem(R.id.action_radio_mute_speaker).setChecked(isRadioMuteEnabled());
+        menu.findItem(R.id.action_notify_messages).setChecked(isNotifyEnabled());
         updateAckMenu();
         return true;
     }
@@ -1892,6 +1950,18 @@ public class MainActivity extends AppCompatActivity {
 
         if (id == R.id.action_receive_filters) {
             showReceiveFiltersDialog();
+            return true;
+        }
+        if (id == R.id.action_notify_messages) {
+            setNotifyEnabled(!isNotifyEnabled());
+            return true;
+        }
+        if (id == R.id.action_notify_settings) {
+            try {
+                startActivity(notifier.channelSettings());
+            } catch (android.content.ActivityNotFoundException e) {
+                Toast.makeText(this, R.string.notify_settings_failed, Toast.LENGTH_SHORT).show();
+            }
             return true;
         }
 
@@ -2137,6 +2207,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void clearStoredMessages() {
         messages.clear();
+        notifier.cancelAll();
         PictureUtil.prune(this, new java.util.HashSet<>());
         incomingPictures.clear();
         SharedPreferences pref = getPreferences(Context.MODE_PRIVATE);
@@ -2231,6 +2302,7 @@ public class MainActivity extends AppCompatActivity {
         sentMessagesById.clear();
         incomingPictures.clear();
         PasswordStore.destroy(this);
+        notifier.cancelAll();
         getPreferences(Context.MODE_PRIVATE).edit().clear().commit();
         deleteRecursively(getFilesDir());
         deleteRecursively(getCacheDir());
@@ -3592,6 +3664,7 @@ public class MainActivity extends AppCompatActivity {
         in.done = true;
         in.locked = false;
         in.entry = replaceBody(in.entry, pictureBody(name, in.assembly.encrypted, null));
+        notifyReceived(parseCallAndNote(in.entry.substring(0, Math.max(0, in.entry.indexOf('\n'))))[0], in.entry);
         // Pictures are never addressed to a call sign, so only "All messages" acknowledges them
         if (ackMode == ACK_ALL && hasRealCallSign()) {
             in.wantAck = true;
@@ -4482,6 +4555,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         activityResumed = true;
+        // Whatever arrived while away is on screen now
+        notifier.cancelAll();
         startListening();
         if (rig != null)
             rig.setPolling(rig.isConnected());
