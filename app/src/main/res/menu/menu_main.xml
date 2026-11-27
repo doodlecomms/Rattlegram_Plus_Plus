@@ -189,6 +189,8 @@
     <!-- Contacts -->
     <item android:id="@+id/action_contacts" android:title="@string/contacts" />
 
+    <item android:id="@+id/action_receive_filters" android:title="@string/receive_filters" />
+
     <item android:id="@+id/action_privacy_policy" android:title="@string/privacy_policy" />
     <item android:id="@+id/action_about" android:title="@string/about" />
 </menu>
