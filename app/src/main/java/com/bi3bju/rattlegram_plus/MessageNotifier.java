@@ -80,9 +80,14 @@ final class MessageNotifier {
 
     /** Removes the message notifications (when the app is opened, messages are wiped, or they are turned off). */
     void cancelAll() {
-        NotificationManagerCompat nm = NotificationManagerCompat.from(context);
-        for (int id = FIRST_ID; id < FIRST_ID + MAX_SHOWN; ++id)
-            nm.cancel(id);
+        // Only the ones actually showing: cancelling every possible ID each time the app opens runs
+        // into Android's rate limit for notification updates, which then drops cancels
+        NotificationManager nm = context.getSystemService(NotificationManager.class);
+        if (nm == null)
+            return;
+        for (android.service.notification.StatusBarNotification n : nm.getActiveNotifications())
+            if (n.getId() >= FIRST_ID && n.getId() < FIRST_ID + MAX_SHOWN)
+                nm.cancel(n.getId());
     }
 
     /** Android's own settings for the channel: sound, vibration, lock screen, and so on. */
