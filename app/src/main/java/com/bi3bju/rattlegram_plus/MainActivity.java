@@ -127,6 +127,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
     private ArrayList<Message> repeatedMessages;
+    private final ReceiveFilter receiveFilter = new ReceiveFilter();
 
     private final int permissionID = 1;
     private final int locationPermissionID = 100;
@@ -409,6 +410,9 @@ public class MainActivity extends AppCompatActivity {
             case STATUS_NOPE:
                 stagedDecoder(stagedCFO, stagedMode, stagedCall);
                 fromStatus();
+                // Whether it was encrypted cannot be told, so only the call sign filters apply
+                if (filteredOut(parseCallSign(stagedCall), parseCallSign(stagedCall), true, false, null))
+                    break;
                 addLine(parseCallSign(stagedCall), getString(R.string.preamble_nope, stagedMode[0]));
                 break;
             case STATUS_PING:
@@ -416,6 +420,8 @@ public class MainActivity extends AppCompatActivity {
                 fromStatus();
                 // Ping also auto-saves the sender's call sign
                 String pingSender = parseCallSign(stagedCall);
+                if (filteredOut(pingSender, pingSender, false, false, null))
+                    break;
                 autoSaveContact(pingSender);
                 addLine(pingSender, getString(R.string.preamble_ping));
                 break;
@@ -430,19 +436,32 @@ public class MainActivity extends AppCompatActivity {
             case STATUS_DONE:
                 int result = fetchDecoder(payload);
                 if (result < 0) {
-                    addLine(parseCallSign(stagedCall), getString(R.string.decoding_failed));
+                    if (!filteredOut(parseCallSign(stagedCall), parseCallSign(stagedCall), true, false, null))
+                        addLine(parseCallSign(stagedCall), getString(R.string.decoding_failed));
                 } else {
                     setStatus(getResources().getQuantityString(R.plurals.bits_flipped, result, result), true);
                     String sender = parseCallSign(stagedCall);
+                    String received = new String(payload).trim();
+                    PictureCodec.Packet picturePart = PictureCodec.parse(received);
+                    String plain = picturePart == null ? CryptoUtils.decrypt(received, password) : null;
+                    String[] hidden = HiddenCall.unwrap(plain);
                     if (repeaterMode) {
-                        repeatMessage();
+                        boolean encrypted = plain != null || ReceiveFilter.looksEncrypted(received)
+                                || picturePart != null && PictureCodec.isEncrypted(received);
+                        // The repeater's own debounce handles repeats
+                        if (!filteredOut(sender, hidden != null ? hidden[0] : sender, encrypted, plain != null, null))
+                            repeatMessage();
                     } else {
-                        String received = new String(payload).trim();
-                        PictureCodec.Packet picturePart = PictureCodec.parse(received);
                         if (picturePart != null) {
-                            handlePicturePart(sender, picturePart, received);
+                            boolean encrypted = PictureCodec.isEncrypted(received);
+                            // A hidden call sign is only known when the picture is complete; it is checked then
+                            boolean hiddenSender = encrypted && HiddenCall.PLACEHOLDER.equals(sender);
+                            if (!filteredOut(sender, hiddenSender ? null : sender, encrypted, false, received))
+                                handlePicturePart(sender, picturePart, received);
                         } else if (!handleAcknowledgment(sender, received)) {
-                            String[] hidden = HiddenCall.unwrap(CryptoUtils.decrypt(received, password));
+                            boolean encrypted = plain != null || ReceiveFilter.looksEncrypted(received);
+                            if (filteredOut(sender, hidden != null ? hidden[0] : sender, encrypted, plain != null, received))
+                                break;
                             if (hidden != null) {
                                 autoSaveContact(hidden[0]);
                                 addMessage(hidden[0], getString(R.string.received_hidden), hidden[1]);
@@ -456,6 +475,80 @@ public class MainActivity extends AppCompatActivity {
                 }
                 break;
         }
+    }
+
+    /**
+     * Applies the optional receive filters. Returns true, and says why on the status line, when the message
+     * is to be dropped (not shown, acknowledged or relayed). See {@link ReceiveFilter#check}.
+     */
+    private boolean filteredOut(String headerCall, String realCall, boolean encrypted, boolean decrypted, String text) {
+        if (!receiveFilter.anyEnabled())
+            return false;
+        List<String> calls = new ArrayList<>();
+        for (Contact c : contacts)
+            calls.add(c.callSign);
+        ReceiveFilter.Verdict verdict = receiveFilter.check(headerCall, realCall, encrypted, decrypted, text,
+                calls, callSign, System.currentTimeMillis());
+        String who = realCall != null ? realCall : headerCall;
+        switch (verdict) {
+            case DUPLICATE:
+                setStatus(getString(R.string.filtered_duplicate, who), true);
+                return true;
+            case UNENCRYPTED:
+                setStatus(getString(R.string.filtered_unencrypted, who), true);
+                return true;
+            case NOT_A_CONTACT:
+                setStatus(getString(R.string.filtered_not_contact, who), true);
+                return true;
+            case OWN_CALL:
+                setStatus(getString(R.string.filtered_own_call), true);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private void loadReceiveFilters() {
+        SharedPreferences pref = getPreferences(Context.MODE_PRIVATE);
+        receiveFilter.ignoreDuplicates = pref.getBoolean("filterDuplicates", false);
+        receiveFilter.ignoreUnencrypted = pref.getBoolean("filterUnencrypted", false);
+        receiveFilter.contactsOnly = pref.getBoolean("filterContactsOnly", false);
+        receiveFilter.ignoreOwnCall = pref.getBoolean("filterOwnCall", false);
+    }
+
+    private void showReceiveFiltersDialog() {
+        View view = getLayoutInflater().inflate(R.layout.receive_filters, null);
+        CheckBox duplicates = view.findViewById(R.id.filter_duplicates);
+        CheckBox unencrypted = view.findViewById(R.id.filter_unencrypted);
+        CheckBox contactsOnly = view.findViewById(R.id.filter_contacts);
+        CheckBox ownCall = view.findViewById(R.id.filter_own_call);
+        duplicates.setChecked(receiveFilter.ignoreDuplicates);
+        unencrypted.setChecked(receiveFilter.ignoreUnencrypted);
+        contactsOnly.setChecked(receiveFilter.contactsOnly);
+        ownCall.setChecked(receiveFilter.ignoreOwnCall);
+        new AlertDialog.Builder(this, R.style.Theme_AlertDialog)
+                .setTitle(R.string.receive_filters)
+                .setView(view)
+                .setPositiveButton(R.string.okay, (dialog, which) -> {
+                    receiveFilter.ignoreDuplicates = duplicates.isChecked();
+                    receiveFilter.ignoreUnencrypted = unencrypted.isChecked();
+                    receiveFilter.contactsOnly = contactsOnly.isChecked();
+                    receiveFilter.ignoreOwnCall = ownCall.isChecked();
+                    if (!receiveFilter.ignoreDuplicates)
+                        receiveFilter.forgetRecent();
+                    getPreferences(Context.MODE_PRIVATE).edit()
+                            .putBoolean("filterDuplicates", receiveFilter.ignoreDuplicates)
+                            .putBoolean("filterUnencrypted", receiveFilter.ignoreUnencrypted)
+                            .putBoolean("filterContactsOnly", receiveFilter.contactsOnly)
+                            .putBoolean("filterOwnCall", receiveFilter.ignoreOwnCall)
+                            .apply();
+                    if (receiveFilter.ignoreUnencrypted && (password == null || password.isEmpty()))
+                        Toast.makeText(this, R.string.filter_unencrypted_needs_password, Toast.LENGTH_LONG).show();
+                    else if (receiveFilter.contactsOnly && contacts.isEmpty())
+                        Toast.makeText(this, R.string.filter_contacts_empty, Toast.LENGTH_LONG).show();
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
     }
 
     private void setStatus(String str, boolean tmp) {
@@ -952,6 +1045,8 @@ public class MainActivity extends AppCompatActivity {
         // Skip blank, empty, ANONYMOUS
         if (isBlankCallSign(senderCall)) return;
         if ("ANONYMOUS".equals(senderCall)) return;
+        // While only contacts are shown, Contacts is the list of who gets through: never add to it on our own
+        if (receiveFilter.contactsOnly) return;
 
         // Ignore if already present
         for (Contact c : contacts) {
@@ -1097,6 +1192,7 @@ public class MainActivity extends AppCompatActivity {
         payload = new byte[170];
         repeatedMessages = new ArrayList<>();
         loadContacts();
+        loadReceiveFilters();
         prunePictures();
         messageListView = binding.messages;
         binding.messages.setAdapter(messages);
@@ -1791,6 +1887,11 @@ public class MainActivity extends AppCompatActivity {
 
         if (id == R.id.action_contacts) {
             showContactsDialog();
+            return true;
+        }
+
+        if (id == R.id.action_receive_filters) {
+            showReceiveFiltersDialog();
             return true;
         }
 
@@ -3457,6 +3558,13 @@ public class MainActivity extends AppCompatActivity {
     private void finishIncomingPicture(IncomingPicture in) {
         byte[] image = in.assembly.assemble(password);
         String hiddenCall = image == null || !in.assembly.encrypted ? null : HiddenCall.callIn(image);
+        if (hiddenCall != null && filteredOut(HiddenCall.PLACEHOLDER, hiddenCall, true, true, null)) {
+            // Its sender could only be checked now that it is complete and decrypted
+            in.done = true;
+            messages.remove(in.entry);
+            storeSettings();
+            return;
+        }
         if (hiddenCall != null) {
             image = HiddenCall.strip(image, hiddenCall);
             autoSaveContact(hiddenCall);

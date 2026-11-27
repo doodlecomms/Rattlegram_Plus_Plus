@@ -388,4 +388,21 @@ The resulting text message from the COFDMTV decoder is the only data that gets s
 	<string name="radio_permission_denied">Bluetooth permission denied</string>
 	<string name="radio_busy">The radio is still transmitting</string>
 	<string name="radio_disconnect_first">Disconnect the Bluetooth radio first</string>
+	<!-- Receive filters -->
+	<string name="receive_filters">Receive Filters</string>
+	<string name="filter_duplicates">Ignore repeated copies</string>
+	<string name="filter_duplicates_hint">The same message from the same station within 10 minutes is shown once, for example when a repeater sends it again.</string>
+	<string name="filter_unencrypted">Ignore unencrypted messages</string>
+	<string name="filter_unencrypted_hint">Only encrypted messages, locations and pictures are shown; unencrypted ones and pings are dropped. Encrypted messages you cannot open yet are kept, so they unlock when you enter the password. Acknowledgments still count.</string>
+	<string name="filter_contacts">Only show messages from my contacts</string>
+	<string name="filter_contacts_hint">Messages from call signs not in Contacts are dropped, and new call signs are no longer added to Contacts on their own. A hidden call sign is checked once the message is decrypted; one you cannot decrypt is dropped.</string>
+	<string name="filter_own_call">Ignore my own call sign</string>
+	<string name="filter_own_call_hint">Drops messages that arrive with your call sign, such as your own message coming back from a repeater.</string>
+	<string name="filter_note">Filtered messages are not shown, acknowledged or relayed by Repeater mode; the status line says why. A call sign is only text the sender typed, so these filters cut clutter but do not prove who sent a message. Only encryption does that.</string>
+	<string name="filter_unencrypted_needs_password">Set a password first (Danger Zone → Password), or every message will be dropped.</string>
+	<string name="filter_contacts_empty">Contacts is empty, so every message will be dropped until you add some.</string>
+	<string name="filtered_duplicate">Ignored a repeated message from %1$s</string>
+	<string name="filtered_unencrypted">Ignored an unencrypted message from %1$s</string>
+	<string name="filtered_not_contact">Ignored a message from %1$s (not in Contacts)</string>
+	<string name="filtered_own_call">Ignored a message with my call sign</string>
 </resources>
