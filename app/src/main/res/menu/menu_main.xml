@@ -109,6 +109,7 @@
                 </menu>
             </item>
             <item android:id="@+id/action_show_spectrum" android:title="@string/spectrum_analyzer" />
+            <item android:id="@+id/action_show_level" android:title="@string/show_input_level" android:checkable="true" />
         </menu>
     </item>
 

@@ -388,4 +388,13 @@ The resulting text message from the COFDMTV decoder is the only data that gets s
 	<string name="radio_permission_denied">Bluetooth permission denied</string>
 	<string name="radio_busy">The radio is still transmitting</string>
 	<string name="radio_disconnect_first">Disconnect the Bluetooth radio first</string>
+	<!-- Input level meter -->
+	<string name="show_input_level">Show Input Level</string>
+	<string name="input_level">Input level</string>
+	<string name="level_format">%1$d dB · %2$s</string>
+	<string name="level_silent">Nothing coming in</string>
+	<string name="level_low">Low</string>
+	<string name="level_good">Good</string>
+	<string name="level_loud">Loud</string>
+	<string name="level_clipping">Too loud (clipping)</string>
 </resources>
